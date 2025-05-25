@@ -7,6 +7,7 @@ from typing import Callable
 from flask import Flask, send_from_directory, request
 import transforms3d as t3d
 import numpy as np
+from .certs import generate_self_signed_cert
 
 
 TF_RUB2FLU = np.array([[0, 0, -1, 0], [-1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1]])
@@ -62,10 +63,14 @@ class Teleop:
         self.__pose = np.eye(4)
 
         if self.__ssl_context is None:
+            certfile, keyfile = generate_self_signed_cert(self.__host)
+            self.__logger.info(
+                f"Generated self-signed certificate: {certfile}, key: {keyfile}"
+            )
             self.__ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS)
             self.__ssl_context.load_cert_chain(
-                certfile=os.path.join(THIS_DIR, "cert.pem"),
-                keyfile=os.path.join(THIS_DIR, "key.pem"),
+                certfile=certfile,
+                keyfile=keyfile,
             )
 
         self.__app = Flask(__name__)
