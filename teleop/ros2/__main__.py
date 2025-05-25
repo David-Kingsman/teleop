@@ -48,16 +48,37 @@ def main():
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Host address")
     parser.add_argument("--port", type=int, default=4443, help="Port number")
     parser.add_argument(
+        "--natural-position",
+        nargs=3,
+        type=float,
+        default=[0.0, 0.0, 0.0],
+        help="Natural position of the phone",
+    )
+    parser.add_argument(
+        "--natural-orientation",
+        nargs=3,
+        type=float,
+        default=[0.0, -45, 0.0],
+        help="Natural orientation of the phone (in degrees)",
+    )
+
+    parser.add_argument(
         "--ros-args",
         nargs=argparse.REMAINDER,
         help="Arguments to pass to ROS",
+        default=[],
     )
 
     args = parser.parse_args()
 
     rclpy.init(args=["--ros-args"] + args.ros_args)
 
-    teleop = Teleop(host=args.host, port=args.port)
+    teleop = Teleop(
+        host=args.host,
+        port=args.port,
+        natural_phone_orientation_euler=args.natural_orientation,
+        natural_phone_position=args.natural_position,
+    )
     current_robot_pose_message = None
     if args.omit_current_pose:
         current_robot_pose_message = PoseStamped()

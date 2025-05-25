@@ -45,7 +45,14 @@ class Teleop:
         ssl_context (ssl.SSLContext, optional): The SSL context for secure communication. Defaults to None.
     """
 
-    def __init__(self, host="0.0.0.0", port=4443, ssl_context=None):
+    def __init__(
+        self,
+        host="0.0.0.0",
+        port=4443,
+        ssl_context=None,
+        natural_phone_orientation_euler=None,
+        natural_phone_position=None,
+    ):
         self.__logger = logging.getLogger("teleop")
         self.__logger.setLevel(logging.INFO)
         self.__logger.addHandler(logging.StreamHandler())
@@ -60,6 +67,16 @@ class Teleop:
         self.__previous_received_pose = None
         self.__callbacks = []
         self.__pose = np.eye(4)
+
+        if natural_phone_orientation_euler is None:
+            natural_phone_orientation_euler = [0, math.radians(-45), 0]
+        if natural_phone_position is None:
+            natural_phone_position = [0, 0, 0]
+        self.__natural_phone_pose = t3d.affines.compose(
+            natural_phone_position,
+            t3d.euler.euler2mat(*natural_phone_orientation_euler),
+            [1, 1, 1],
+        )
 
         if self.__ssl_context is None:
             self.__ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS)
@@ -127,6 +144,7 @@ class Teleop:
         received_pose[:3, :3] = received_pose[:3, :3] @ np.linalg.inv(
             TF_RUB2FLU[:3, :3]
         )
+        received_pose = received_pose @ self.__natural_phone_pose
 
         # Pose jump protection
         if self.__previous_received_pose is not None:
