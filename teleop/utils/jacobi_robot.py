@@ -413,6 +413,30 @@ class JacobiRobot:
         print(f"Joint velocities: {np.round(self.dq, 3)}")
         print(f"End-effector position: {np.round(ee_pose[:3, 3], 3)}")
 
+    def get_joint_position(self, joint_name: str) -> float:
+        """Get current joint position by name."""
+        joint_index = self.model.getJointId(joint_name) - 1
+        if joint_index < 0 or joint_index >= self.model.njoints:
+            raise ValueError(f"Joint '{joint_name}' not found in model.")
+        return self.q[joint_index]
+    
+    def set_joint_position(self, joint_name: str, position: float):
+        """Set joint position by name."""
+        joint_index = self.model.getJointId(joint_name) - 1
+        if joint_index < 0 or joint_index >= self.model.njoints:
+            raise ValueError(f"Joint '{joint_name}' not found in model.")
+        print(f"Setting joint '{joint_name}' to position {position:.3f}")
+        self.q[joint_index] = position
+
+    def get_joint_names(self) -> List[str]:
+        """Get list of joint names in the robot model."""
+        joint_names = []
+        for i in range(self.model.njoints):
+            joint_name = self.model.names[i]
+            if joint_name != "universe":
+                joint_names.append(joint_name)
+        return joint_names
+
     def get_joint_name_mapping(self) -> dict:
         """Get mapping from joint index to joint name."""
         joint_mapping = {}
