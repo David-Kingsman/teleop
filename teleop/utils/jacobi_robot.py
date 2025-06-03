@@ -39,11 +39,15 @@ class JacobiRobot:
         self,
         urdf_path: str,
         ee_frame_name: str = "end_effector",
-        max_linear_vel: float = 0.1,
-        max_angular_vel: float = 0.5,
-        max_linear_acc: float = 1.0,
-        max_angular_acc: float = 2.0,
+        max_linear_vel: float = 0.4,
+        max_angular_vel: float = 0.9,
+        max_linear_acc: float = 3.0,
+        max_angular_acc: float = 6.0,
         max_joint_vel: float = 5.0,
+        min_linear_vel: float = 0.03,
+        min_angular_vel: float = 0.1,
+        linear_gain: float = 20.0,
+        angular_gain: float = 4.0,
     ):
         """
         Initialize the Pinocchio robot with servo control capabilities.
@@ -74,6 +78,10 @@ class JacobiRobot:
         self.max_linear_acc = max_linear_acc
         self.max_angular_acc = max_angular_acc
         self.max_joint_vel = max_joint_vel
+        self.min_linear_vel = min_linear_vel
+        self.min_angular_vel = min_angular_vel
+        self.linear_gain = linear_gain
+        self.angular_gain = angular_gain
 
         # Control gains - REDUCED for stability
         self.kp_pos = 1.0  # Position gain (reduced from 5.0)
@@ -155,46 +163,24 @@ class JacobiRobot:
         linear_error_norm = np.linalg.norm(linear_error)
         angular_error_norm = np.linalg.norm(angular_error)
 
-        # Adaptive gains that increase as we get closer to target
-        # This prevents the robot from slowing down too much near the target
-        min_gain_ratio = 0.3  # Minimum gain as ratio of original gain
-
-        # Linear gain adaptation
-        if linear_error_norm > linear_tol:
-            linear_gain_factor = max(
-                min_gain_ratio, min(1.0, linear_error_norm / (5 * linear_tol))
-            )
-        else:
-            linear_gain_factor = min_gain_ratio
-
-        # Angular gain adaptation
-        if angular_error_norm > angular_tol:
-            angular_gain_factor = max(
-                min_gain_ratio, min(1.0, angular_error_norm / (5 * angular_tol))
-            )
-        else:
-            angular_gain_factor = min_gain_ratio
 
         # Desired twist with adaptive proportional control
-        desired_linear_vel = self.kp_pos * linear_gain_factor * linear_error
-        desired_angular_vel = self.kp_ori * angular_gain_factor * angular_error
+        desired_linear_vel = self.kp_pos * self.linear_gain * linear_error
+        desired_angular_vel = self.kp_ori * self.angular_gain * angular_error
 
         # Add minimum velocity to prevent stalling near target
-        min_linear_vel = 0.03
-        min_angular_vel = 0.1
-
         if linear_error_norm > linear_tol:
             linear_vel_norm = np.linalg.norm(desired_linear_vel)
-            if linear_vel_norm > 0 and linear_vel_norm < min_linear_vel:
+            if linear_vel_norm > 0 and linear_vel_norm < self.min_linear_vel:
                 desired_linear_vel = desired_linear_vel * (
-                    min_linear_vel / linear_vel_norm
+                    self.min_angular_vel / linear_vel_norm
                 )
 
         if angular_error_norm > angular_tol:
             angular_vel_norm = np.linalg.norm(desired_angular_vel)
-            if angular_vel_norm > 0 and angular_vel_norm < min_angular_vel:
+            if angular_vel_norm > 0 and angular_vel_norm < self.min_angular_vel:
                 desired_angular_vel = desired_angular_vel * (
-                    min_angular_vel / angular_vel_norm
+                    self.min_angular_vel / angular_vel_norm
                 )
 
         # Apply velocity limits
