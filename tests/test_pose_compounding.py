@@ -29,7 +29,7 @@ class TestPoseCompounding(unittest.TestCase):
         cls.__last_pose = None
         cls.__last_message = None
 
-        cls.teleop = Teleop()
+        cls.teleop = Teleop(natural_phone_orientation_euler=[0, 0, 0])
         cls.teleop.subscribe(cls.__callback)
         cls.thread = threading.Thread(target=cls.teleop.run)
         cls.thread.daemon = True
