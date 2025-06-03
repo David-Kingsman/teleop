@@ -8,7 +8,6 @@ from teleop.utils.jacobi_robot import JacobiRobot
 class RobotArm(Robot):
     def __init__(self):
         super().__init__()
-        self.__arm_chain = None
         self.__motors = {}
 
         self.__jacobi = None
