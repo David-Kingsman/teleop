@@ -259,7 +259,7 @@ class JacobiRobot:
         # Check for excessive velocities (safety)
         if np.max(np.abs(joint_velocities)) > self.max_joint_vel:
             print("Warning: Excessive joint velocities detected, stopping!")
-            return False, self.q.copy(), np.zeros_like(joint_velocities)
+            return False
 
         # Update robot state
         self.update_state(joint_velocities, dt)
@@ -394,16 +394,22 @@ class JacobiRobot:
         print(f"Joint velocities: {np.round(self.dq, 3)}")
         print(f"End-effector position: {np.round(ee_pose[:3, 3], 3)}")
 
+    def __get_joint_index(self, joint_name: str) -> int:
+        for i in range(self.model.njoints):
+            if self.model.names[i] == joint_name:
+                return i
+        raise ValueError(f"Joint '{joint_name}' not found in model.")
+
     def get_joint_position(self, joint_name: str) -> float:
         """Get current joint position by name."""
-        joint_index = self.model.getJointId(joint_name) - 1
+        joint_index = self.__get_joint_index(joint_name)
         if joint_index < 0 or joint_index >= self.model.njoints:
             raise ValueError(f"Joint '{joint_name}' not found in model.")
         return self.q[joint_index]
 
     def set_joint_position(self, joint_name: str, position: float):
         """Set joint position by name."""
-        joint_index = self.model.getJointId(joint_name) - 1
+        joint_index = self.__get_joint_index(joint_name)
         if joint_index < 0 or joint_index >= self.model.njoints:
             raise ValueError(f"Joint '{joint_name}' not found in model.")
         print(f"Setting joint '{joint_name}' to position {position:.3f}")
@@ -420,7 +426,7 @@ class JacobiRobot:
 
     def get_joint_velocity(self, joint_name: str) -> float:
         """Get current joint velocity by name."""
-        joint_index = self.model.getJointId(joint_name) - 1
+        joint_index = self.__get_joint_index(joint_name)
         if joint_index < 0 or joint_index >= self.model.njoints:
             raise ValueError(f"Joint '{joint_name}' not found in model.")
         return self.dq[joint_index]

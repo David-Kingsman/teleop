@@ -69,7 +69,6 @@ class JacobiRobotROS(JacobiRobot):
             min_angular_vel,
             linear_gain,
             angular_gain,
-            joint_names=joint_names,
         )
 
         self.joint_states_received = False
@@ -145,13 +144,14 @@ class JacobiRobotROS(JacobiRobot):
 
         # Update joint positions
         for i, name in enumerate(msg.name):
-            if name in self.joint_names:
+            if name not in self.joint_names:
                 continue
             try:
                 self.set_joint_position(name, msg.position[i])
             except ValueError as e:
-                pass
-
+                self.node.get_logger().error(
+                    f"Failed to set joint position for {name}: {e}"
+                )
         self.joint_states_received = True
 
     def __send_joint_trajectory_topic(
@@ -188,8 +188,6 @@ class JacobiRobotROS(JacobiRobot):
 
     def servo_to_pose(self, target_pose: np.ndarray, dt: float = 0.1) -> bool:
         reached = super().servo_to_pose(target_pose, dt)
-        if reached:
-            print(f"Reached: {reached}")
         if reached is None:
             self.node.get_logger().error(
                 "Failed to compute joint positions for target pose"
@@ -229,8 +227,6 @@ def main():
         robot = JacobiRobotROS(
             node=node,
             ee_frame_name="panda_hand",
-            max_linear_vel=0.05,
-            max_angular_vel=0.2,
             joint_names=[
                 "panda_joint1",
                 "panda_joint2",
