@@ -1,6 +1,7 @@
 import ssl
 import os
 import math
+import socket
 import logging
 from werkzeug.serving import ThreadedWSGIServer
 from typing import Callable
@@ -11,6 +12,18 @@ import numpy as np
 
 TF_RUB2FLU = np.array([[0, 0, -1, 0], [-1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1]])
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
+
+
+def get_local_ip():
+    try:
+        # Connect to an external address (doesn't actually send data)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))  # Google DNS as a dummy target
+        local_ip = s.getsockname()[0]
+        s.close()
+        return local_ip
+    except Exception as e:
+        return f"Error: {e}"
 
 
 def are_close(a, b=None, lin_tol=1e-9, ang_tol=1e-9):
@@ -207,7 +220,11 @@ class Teleop:
         """
         Runs the teleop server. This method is blocking.
         """
-        self.__logger.info(f"Server started at https://{self.__host}:{self.__port}")
+        self.__logger.info(f"Server started at {self.__host}:{self.__port}")
+        self.__logger.info(
+            f"The phone web app should be available at https://{get_local_ip()}:{self.__port}"
+        )
+
         self.__server = ThreadedWSGIServer(
             app=self.__app,
             host=self.__host,

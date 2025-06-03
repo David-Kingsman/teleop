@@ -28,8 +28,10 @@ setup(
         "werkzeug",
         "pytest",
         "requests",
-        "pin",
     ],
+    extras_require={
+        "pin": ["pin"],
+    },
     package_data={
         "teleop": ["cert.pem", "key.pem", "index.html"],
     },
