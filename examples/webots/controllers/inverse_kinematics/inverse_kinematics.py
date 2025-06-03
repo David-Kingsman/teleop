@@ -1,83 +1,64 @@
-import sys
 import tempfile
 import threading
-
-try:
-    import ikpy
-    from ikpy.chain import Chain
-except ImportError:
-    sys.exit(
-        'The "ikpy" Python module is not installed. '
-        'To run this sample, please upgrade "pip" and install ikpy with this command: "pip install ikpy"'
-    )
-
 from controller import Robot
 from teleop import Teleop
+from teleop.utils.jacobi_robot import JacobiRobot
 
 
 class RobotArm(Robot):
     def __init__(self):
         super().__init__()
-        self.__arm_chain = None
-        self.__motors = None
+        self.__motors = {}
 
-        # Create the arm chain from the URDF
-        filename = None
+        self.__jacobi = None
         with tempfile.NamedTemporaryFile(suffix=".urdf", delete=False) as file:
-            filename = file.name
             file.write(self.getUrdf().encode("utf-8"))
-        self.__arm_chain = Chain.from_urdf_file(
-            filename,
-            active_links_mask=[False, True, True, True, True, True, True, False],
-            symbolic=False,
-        )
+            self.__jacobi = JacobiRobot(file.name, ee_frame_name="wrist_3_link")
 
         # Initialize the arm motors and encoders.
         timestep = int(self.getBasicTimeStep())
-        self.__motors = []
-        for link in self.__arm_chain.links:
-            if "joint" in link.name and "pen" not in link.name:
-                motor = self.getDevice(link.name)
-                motor.setVelocity(1.0)
-                position_sensor = motor.getPositionSensor()
-                position_sensor.enable(timestep)
-                self.__motors.append(motor)
+        for joint_name in self.__jacobi.get_joint_names():
+            motor = self.getDevice(joint_name)
+            motor.setVelocity(1.0)
+            position_sensor = motor.getPositionSensor()
+            position_sensor.enable(timestep)
+            self.__motors[joint_name] = motor
 
     def move_to_position(self, pose):
-        position = pose[:3, 3]
-        orientation = pose[:3, :3]
-        initial_position = (
-            [0] + [m.getPositionSensor().getValue() for m in self.__motors] + [0]
-        )
-        ik_results = self.__arm_chain.inverse_kinematics(
-            position, initial_position=initial_position, target_orientation=orientation, orientation_mode="all"
-        )
-        for i in range(len(self.__motors)):
-            self.__motors[i].setPosition(ik_results[i + 1])
+        self.__jacobi.servo_to_pose(pose)
+        for name, motor in self.__motors.items():
+            motor.setPosition(self.__jacobi.get_joint_position(name))
 
     def move_joints(self, positions):
-        for i in range(len(self.__motors)):
-            self.__motors[i].setPosition(positions[i])
+        for name, motor in self.__motors.items():
+            motor.setPosition(positions[name])
+            self.__jacobi.set_joint_position(name, positions[name])
 
     def get_current_pose(self):
-        positions = (
-            [0] + [m.getPositionSensor().getValue() for m in self.__motors] + [0]
-        )
-        return self.__arm_chain.forward_kinematics(positions)
+        return self.__jacobi.get_ee_pose()
 
 
 def main():
-    target_pose = None
     robot = RobotArm()
     teleop = Teleop()
+    target_pose = None
 
     def on_teleop_callback(pose, message):
         nonlocal target_pose
 
         if message["move"]:
             target_pose = pose
+        else:
+            target_pose = None
 
-    robot.move_joints([0, -1.0, 1.8, -2.0, -1.3, 0.4])
+    robot.move_joints({
+        "shoulder_pan_joint": 0.0,
+        "shoulder_lift_joint": -1.0,
+        "elbow_joint": 1.8,
+        "wrist_1_joint": -2.0,
+        "wrist_2_joint": -1.3,
+        "wrist_3_joint": 0.4
+    })
     timestep = int(robot.getBasicTimeStep())
     for _ in range(100):
         robot.step(timestep) != -1

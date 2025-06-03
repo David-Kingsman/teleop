@@ -17,7 +17,7 @@ for match in re.findall(r"\]\((?!http)([^)]+)\)", long_description):
 setup(
     name="teleop",
     version="0.0.8",
-    packages=["teleop", "teleop.basic", "teleop.ros2"],
+    packages=["teleop", "teleop.basic", "teleop.ros2", "teleop.utils"],
     long_description=long_description,
     long_description_content_type="text/markdown",
     description="Turns your phone into a robot arm teleoperation device by leveraging the WebXR API",
@@ -29,6 +29,9 @@ setup(
         "pytest",
         "requests",
     ],
+    extras_require={
+        "pin": ["pin"],
+    },
     package_data={
         "teleop": ["cert.pem", "key.pem", "index.html"],
     },

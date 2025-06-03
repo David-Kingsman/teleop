@@ -86,6 +86,69 @@ Explore the examples to learn how to use the package in various scenarios:
 
 - [examples/webots](./examples/webots): Teleoperation of a UR5e robot arm using [ikpy](https://github.com/Phylliade/ikpy) in the [Webots](https://github.com/cyberbotics/webots/) simulator.
 
+## Utils
+
+The package includes several utility classes to simplify robot arm integration:
+
+> [!NOTE]  
+> To use the utility classes, install the package with the additional dependencies:
+> ```bash
+> pip install teleop[pin]
+> ```
+
+### JacobiRobot
+
+A Pinocchio-based servoing and kinematics for robotic manipulators.
+
+**Key Features:**
+- Forward/inverse kinematics using Pinocchio
+- Pose-based servo control with velocity/acceleration limits  
+- Real-time 3D visualization
+- Joint-level control and monitoring
+
+**Usage:**
+```python
+from teleop.utils.jacobi_robot import JacobiRobot
+
+robot = JacobiRobot("robot.urdf", ee_frame_name="end_effector")
+target_pose = np.eye(4)  # 4x4 transformation matrix
+reached = robot.servo_to_pose(target_pose, dt=0.01)
+```
+
+### JacobiRobotROS
+
+ROS 2 wrapper for JacobiRobot that integrates with standard ROS 2 topics and messages.
+
+**Key Features:**
+- Automatic URDF loading from `/robot_description` topic
+- Joint state subscription and trajectory publishing
+- Compatible with `joint_trajectory_controller`
+- Seamless integration with existing ROS 2 control stacks
+
+**Usage:**
+```python
+from teleop.utils.jacobi_robot_ros import JacobiRobotROS
+import rclpy
+
+rclpy.init()
+node = rclpy.create_node("robot_control")
+
+robot = JacobiRobotROS(
+    node=node,
+    ee_frame_name="end_effector",
+    joint_names=["joint1", "joint2", "joint3"]
+)
+
+robot.reset_joint_states()  # Wait for initial joint states
+reached = robot.servo_to_pose(target_pose, dt=0.03)
+```
+
+| **Topic** | **Type** | **Message Type** | **Description** |
+|-----------|----------|------------------|-----------------|
+| `/joint_states` | Subscribed | [sensor_msgs/JointState](https://docs.ros2.org/latest/api/sensor_msgs/msg/JointState.html) | Current joint positions and velocities |
+| `/robot_description` | Subscribed | [std_msgs/String](https://docs.ros2.org/latest/api/std_msgs/msg/String.html) | URDF robot description |
+| `/joint_trajectory_controller/joint_trajectory` | Published | [trajectory_msgs/JointTrajectory](https://docs.ros2.org/latest/api/trajectory_msgs/msg/JointTrajectory.html) | Joint trajectory commands for robot control |
+
 ## Development
 
 If you’d like to contribute, install the package in editable mode:
