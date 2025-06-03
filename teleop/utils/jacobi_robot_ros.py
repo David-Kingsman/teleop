@@ -20,10 +20,16 @@ class JacobiRobotROS(JacobiRobot):
         joint_names: Optional[List[str]] = None,
         joint_state_topic: str = "/joint_states",
         position_command_topic: str = "/joint_trajectory_controller/joint_trajectory",
-        max_linear_vel: float = 0.1,
-        max_angular_vel: float = 0.5,
-        max_linear_acc: float = 1.0,
-        max_angular_acc: float = 2.0,
+        max_linear_vel: float = 0.4,
+        max_angular_vel: float = 0.9,
+        max_linear_acc: float = 3.0,
+        max_angular_acc: float = 6.0,
+        max_joint_vel: float = 5.0,
+        min_linear_vel: float = 0.03,
+        min_angular_vel: float = 0.1,
+        linear_gain: float = 20.0,
+        angular_gain: float = 4.0,
+
     ):
         """
         Initialize ROS 2-enabled Jacobian robot.
@@ -40,6 +46,11 @@ class JacobiRobotROS(JacobiRobot):
             max_angular_vel: Maximum angular velocity
             max_linear_acc: Maximum linear acceleration
             max_angular_acc: Maximum angular acceleration
+            max_joint_vel: Maximum joint velocity
+            min_linear_vel: Minimum linear velocity
+            min_angular_vel: Minimum angular velocity
+            linear_gain: Linear gain for control
+            angular_gain: Angular gain for control
         """
 
         self.node = node
@@ -53,6 +64,12 @@ class JacobiRobotROS(JacobiRobot):
             max_angular_vel,
             max_linear_acc,
             max_angular_acc,
+            max_joint_vel,
+            min_linear_vel,
+            min_angular_vel,
+            linear_gain,
+            angular_gain,
+            joint_names=joint_names,
         )
 
         self.joint_states_received = False

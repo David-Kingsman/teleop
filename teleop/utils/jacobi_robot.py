@@ -146,7 +146,7 @@ class JacobiRobot:
             angular_tol: Angular orientation tolerance
 
         Returns:
-            Tuple of (reached_target, joint_positions, joint_velocities)
+            bool: True if target pose is reached, False otherwise
         """
         # Get current pose
         current_pose = self.get_ee_pose()
