@@ -397,7 +397,7 @@ class JacobiRobot:
     def __get_joint_index(self, joint_name: str) -> int:
         for i in range(self.model.njoints):
             if self.model.names[i] == joint_name:
-                return i
+                return i - 1
         raise ValueError(f"Joint '{joint_name}' not found in model.")
 
     def get_joint_position(self, joint_name: str) -> float:
