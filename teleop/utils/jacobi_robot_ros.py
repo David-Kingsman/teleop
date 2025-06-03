@@ -62,14 +62,13 @@ class JacobiRobotROS(JacobiRobot):
             self.joint_names = self.__extract_joint_names_from_urdf()
         else:
             self.joint_names = joint_names
-        self.joint_name_to_index = {name: i for i, name in enumerate(self.joint_names)}
 
         # ROS 2 subscribers
         self.joint_state_sub = self.node.create_subscription(
-            JointState, joint_state_topic, self.__joint_state_callback, 10
+            JointState, joint_state_topic, self.__joint_state_callback, 1
         )
         self.trajectory_publisher = self.node.create_publisher(
-            JointTrajectory, position_command_topic, 10
+            JointTrajectory, position_command_topic, 1
         )
 
     def __get_robot_description_from_topic(self, topic: str) -> str:
@@ -90,6 +89,7 @@ class JacobiRobotROS(JacobiRobot):
                 durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
             ),
         )
+        robot_description_sub
         self.node.get_logger().info(f"Waiting for robot description on topic: {topic}")
         while urdf is None:
             rclpy.spin_once(self.node, timeout_sec=0.1)
@@ -128,16 +128,17 @@ class JacobiRobotROS(JacobiRobot):
 
         # Update joint positions
         for i, name in enumerate(msg.name):
-            if name in self.joint_name_to_index:
-                index = self.joint_name_to_index[name]
-                self.q[index] = msg.position[i]
+            if name in self.joint_names:
+                continue
+            try:
+                self.set_joint_position(name, msg.position[i])
+            except ValueError as e:
+                pass
 
         self.joint_states_received = True
 
     def __send_joint_trajectory_topic(
         self,
-        joint_positions: np.ndarray,
-        joint_velocities: np.ndarray,
         duration: float = 0.05,
     ) -> bool:
         """Send joint trajectory via topic (not action)."""
@@ -153,14 +154,10 @@ class JacobiRobotROS(JacobiRobot):
         # End point
         end_point = JointTrajectoryPoint()
         end_point.velocities = [
-            joint_velocities[self.joint_name_to_index[name]]
-            for name in self.joint_names
-            if name in self.joint_name_to_index
+            self.get_joint_velocity(name) for name in self.joint_names
         ]
         end_point.positions = [
-            joint_positions[self.joint_name_to_index[name]]
-            for name in self.joint_names
-            if name in self.joint_name_to_index
+            self.get_joint_position(name) for name in self.joint_names
         ]
 
         end_point.time_from_start = Duration(
@@ -168,25 +165,21 @@ class JacobiRobotROS(JacobiRobot):
         )
         traj_msg.points.append(end_point)
 
-        self.node.get_logger().info(
-            f"Publishing trajectory with positions: {[round(pos, 2) for pos in joint_positions.tolist()]}"
-        )
-
         # Publish trajectory
         self.trajectory_publisher.publish(traj_msg)
         return True
 
-    def servo_to_pose_ros(self, target_pose: np.ndarray, dt: float = 0.1) -> bool:
-        reached, joint_positions, joint_velocities = self.servo_to_pose(target_pose, dt)
-        if joint_positions is None:
+    def servo_to_pose(self, target_pose: np.ndarray, dt: float = 0.1) -> bool:
+        reached = super().servo_to_pose(target_pose, dt)
+        if reached:
+            print(f"Reached: {reached}")
+        if reached is None:
             self.node.get_logger().error(
                 "Failed to compute joint positions for target pose"
             )
             return False
 
-        self.__send_joint_trajectory_topic(
-            joint_positions, joint_velocities, duration=dt
-        )
+        self.__send_joint_trajectory_topic(duration=dt)
         return reached
 
     def reset_joint_states(self, blocked: bool = True):
@@ -208,7 +201,7 @@ class JacobiRobotROS(JacobiRobot):
 # sudo apt install ros-jazzy-moveit-resources-panda-moveit-config
 # ros2 launch moveit_resources_panda_moveit_config demo.launch.py
 def main():
-    """Example usage of ROSJacobianRobot."""
+    """Example usage of JacobiRobotROS."""
     rclpy.init()
 
     try:
@@ -251,7 +244,7 @@ def main():
 
         pose_index = 0
         while True:
-            reached = robot.servo_to_pose_ros(target_poses[pose_index], dt=0.03)
+            reached = robot.servo_to_pose(target_poses[pose_index], dt=0.03)
             if reached:
                 node.get_logger().info("Target pose reached.")
                 pose_index = (pose_index + 1) % len(target_poses)
