@@ -30,7 +30,7 @@ setup(
         "requests",
     ],
     extras_require={
-        "pin": ["pin"],
+        "utils": ["pin"],
     },
     package_data={
         "teleop": ["cert.pem", "key.pem", "index.html"],

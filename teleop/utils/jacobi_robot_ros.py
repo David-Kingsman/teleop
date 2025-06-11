@@ -166,13 +166,12 @@ class JacobiRobotROS(JacobiRobot):
         # Create trajectory message
         traj_msg = JointTrajectory()
         traj_msg.joint_names = self.joint_names
-        traj_msg.header.stamp = self.node.get_clock().now().to_msg()
 
         # End point
         end_point = JointTrajectoryPoint()
-        end_point.velocities = [
-            self.get_joint_velocity(name) for name in self.joint_names
-        ]
+        # end_point.velocities = [
+        #     self.get_joint_velocity(name) for name in self.joint_names
+        # ]
         end_point.positions = [
             self.get_joint_position(name) for name in self.joint_names
         ]

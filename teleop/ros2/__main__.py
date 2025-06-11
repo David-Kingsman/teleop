@@ -84,7 +84,7 @@ def main():
         current_robot_pose_message = PoseStamped()
         current_robot_pose_message.pose.orientation.w = 1.0
     pose_initiated = False
-    node = rclpy.create_node("ros2_teleop")
+    node = rclpy.create_node("teleop")
     pose_publisher = node.create_publisher(PoseStamped, "target_frame", 1)
     broadcaster = TransformBroadcaster(node)
 

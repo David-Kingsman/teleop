@@ -93,7 +93,7 @@ The package includes several utility classes to simplify robot arm integration:
 > [!NOTE]  
 > To use the utility classes, install the package with the additional dependencies:
 > ```bash
-> pip install teleop[pin]
+> pip install teleop[utils]
 > ```
 
 ### JacobiRobot
