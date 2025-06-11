@@ -16,18 +16,6 @@ except ImportError:
         "JacobiRobotROS is not available. Please install the teleop with [utils] extra."
     )
 
-"""
-python3 -m teleop.ros2_ik \
-  --joint-names joint1 joint2 joint3 joint4 joint5 joint6 \
-  --ee-link link6 \
-  --ros-args -r /joint_trajectory:=/joint_trajectory_controller/joint_trajectory
-
-python3 -m teleop.ros2_ik \
-  --joint-names panda_joint1 panda_joint2 panda_joint3 panda_joint4 panda_joint5 panda_joint6 panda_joint7 \
-  --ee-link panda_hand \
-  --ros-args -r /joint_trajectory:=/panda_arm_controller/joint_trajectory
-"""
-
 
 def main():
     parser = argparse.ArgumentParser()
