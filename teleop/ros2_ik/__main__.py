@@ -1,6 +1,5 @@
 from teleop import Teleop
 import argparse
-import time
 import threading
 
 try:
@@ -16,6 +15,18 @@ except ImportError:
     raise ImportError(
         "JacobiRobotROS is not available. Please install the teleop with [utils] extra."
     )
+
+"""
+python3 -m teleop.ros2_ik \
+  --joint-names joint1 joint2 joint3 joint4 joint5 joint6 \
+  --ee-link link6 \
+  --ros-args -r /joint_trajectory:=/joint_trajectory_controller/joint_trajectory
+
+python3 -m teleop.ros2_ik \
+  --joint-names panda_joint1 panda_joint2 panda_joint3 panda_joint4 panda_joint5 panda_joint6 panda_joint7 \
+  --ee-link panda_hand \
+  --ros-args -r /joint_trajectory:=/panda_arm_controller/joint_trajectory
+"""
 
 
 def main():
@@ -40,12 +51,17 @@ def main():
         help="Natural orientation of the phone (in degrees)",
     )
     parser.add_argument(
-        "--end-effector",
+        "--ee-link",
         type=str,
-        default="link6",
+        default="end_effector",
         help="End effector name (e.g., 'panda_hand')",
     )
-
+    parser.add_argument(
+        "--joint-names",
+        nargs="+",
+        default=None,
+        help="List of joint names",
+    )
     parser.add_argument(
         "--ros-args",
         nargs=argparse.REMAINDER,
@@ -66,49 +82,25 @@ def main():
     )
     robot = JacobiRobotROS(
         node,
-        ee_frame_name=args.end_effector,
-        joint_names=[
-            "joint1",
-            "joint2",
-            "joint3",
-            "joint4",
-            "joint5",
-            "joint6",
-        ],
+        ee_link=args.ee_link,
+        joint_names=args.joint_names,
     )
-    last_callback = time.time()
-
 
     ee_pose = robot.get_ee_pose()
-    print(
-        f"Current EE position: {ee_pose[:3, 3]}, orientation: {ee_pose[:3, :3]}"
-    )
     teleop.set_pose(ee_pose)
 
     def teleop_pose_callback(pose, params):
         nonlocal teleop
         nonlocal node
         nonlocal robot
-        nonlocal last_callback
-
-        dt = last_callback - time.time()
-        last_callback = time.time()
 
         if not robot.are_joint_states_received():
             return
 
         if not params["move"]:
-            ee_pose = robot.get_ee_pose()
-            print(
-                f"Current EE position: {ee_pose[:3, 3]}, orientation: {ee_pose[:3, :3]}"
-            )
-            teleop.set_pose(ee_pose)
             return
 
-        robot.servo_to_pose(
-            pose,
-            dt=dt,
-        )
+        robot.servo_to_pose(pose)
 
     teleop.subscribe(teleop_pose_callback)
 

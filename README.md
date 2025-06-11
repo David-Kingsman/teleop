@@ -110,7 +110,7 @@ A Pinocchio-based servoing and kinematics for robotic manipulators.
 ```python
 from teleop.utils.jacobi_robot import JacobiRobot
 
-robot = JacobiRobot("robot.urdf", ee_frame_name="end_effector")
+robot = JacobiRobot("robot.urdf", ee_link="end_effector")
 target_pose = np.eye(4)  # 4x4 transformation matrix
 reached = robot.servo_to_pose(target_pose, dt=0.01)
 ```
@@ -135,7 +135,7 @@ node = rclpy.create_node("robot_control")
 
 robot = JacobiRobotROS(
     node=node,
-    ee_frame_name="end_effector",
+    ee_link="end_effector",
     joint_names=["joint1", "joint2", "joint3"]
 )
 

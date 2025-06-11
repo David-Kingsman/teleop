@@ -38,7 +38,7 @@ class JacobiRobot:
     def __init__(
         self,
         urdf_path: str,
-        ee_frame_name: str = "end_effector",
+        ee_link: str = "end_effector",
         max_linear_vel: float = 0.4,
         max_angular_vel: float = 0.9,
         max_linear_acc: float = 3.0,
@@ -58,9 +58,9 @@ class JacobiRobot:
 
         # Get end-effector frame ID
         try:
-            self.ee_frame_id = self.model.getFrameId(ee_frame_name)
+            self.ee_frame_id = self.model.getFrameId(ee_link)
         except RuntimeError:
-            print(f"Warning: Frame '{ee_frame_name}' not found. Using frame 0.")
+            print(f"Warning: Frame '{ee_link}' not found. Using frame 0.")
             self.ee_frame_id = 0
 
         # Robot state
@@ -439,7 +439,7 @@ if __name__ == "__main__":
     try:
         # Initialize robot
         robot = JacobiRobot(
-            urdf_path, ee_frame_name="link6", max_linear_vel=0.05, max_angular_vel=0.2
+            urdf_path, ee_link="link6", max_linear_vel=0.05, max_angular_vel=0.2
         )  # Reduced limits
 
         # Start visualization

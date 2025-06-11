@@ -16,10 +16,10 @@ class JacobiRobotROS(JacobiRobot):
         self,
         node: Node,
         robot_description_topic: str = "/robot_description",
-        ee_frame_name: str = "end_effector",
+        ee_link: str = "end_effector",
         joint_names: Optional[List[str]] = None,
         joint_state_topic: str = "/joint_states",
-        position_command_topic: str = "/joint_trajectory_controller/joint_trajectory",
+        position_command_topic: str = "/joint_trajectory",
         max_linear_vel: float = 0.4,
         max_angular_vel: float = 0.9,
         max_linear_acc: float = 3.0,
@@ -37,7 +37,7 @@ class JacobiRobotROS(JacobiRobot):
         Args:
             node: ROS 2 node instance
             robot_description_topic: Topic for robot description (URDF)
-            ee_frame_name: End-effector frame name
+            ee_link: End-effector frame name
             joint_names: List of joint names (if None, will be extracted from URDF)
             joint_state_topic: Topic for joint states
             position_command_topic: Topic for position commands
@@ -59,7 +59,7 @@ class JacobiRobotROS(JacobiRobot):
         # Initialize JacobiRobot
         super().__init__(
             urdf_path,
-            ee_frame_name,
+            ee_link,
             max_linear_vel,
             max_angular_vel,
             max_linear_acc,
@@ -225,7 +225,7 @@ def main():
         # Initialize robot with node reference
         robot = JacobiRobotROS(
             node=node,
-            ee_frame_name="panda_hand",
+            ee_link="panda_hand",
             joint_names=[
                 "panda_joint1",
                 "panda_joint2",
