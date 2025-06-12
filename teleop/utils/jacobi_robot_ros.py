@@ -27,8 +27,8 @@ class JacobiRobotROS(JacobiRobot):
         max_joint_vel: float = 5.0,
         min_linear_vel: float = 0.03,
         min_angular_vel: float = 0.1,
-        linear_gain: float = 20.0,
-        angular_gain: float = 4.0,
+        linear_gain: float = 5.0,
+        angular_gain: float = 1.0,
 
     ):
         """
@@ -169,9 +169,9 @@ class JacobiRobotROS(JacobiRobot):
 
         # End point
         end_point = JointTrajectoryPoint()
-        # end_point.velocities = [
-        #     self.get_joint_velocity(name) for name in self.joint_names
-        # ]
+        end_point.velocities = [
+            self.get_joint_velocity(name) for name in self.joint_names
+        ]
         end_point.positions = [
             self.get_joint_position(name) for name in self.joint_names
         ]

@@ -4,6 +4,7 @@ import threading
 
 try:
     import rclpy
+    from std_msgs.msg import String
 except ImportError:
     raise ImportError(
         "ROS2 is not sourced. Please source ROS2 before running this script."
@@ -62,6 +63,11 @@ def main():
     rclpy.init(args=["--ros-args"] + args.ros_args)
 
     node = rclpy.create_node("teleop")
+    gripper_publisher = node.create_publisher(
+        String,
+        "/gripper_command",
+        1
+    )
     teleop = Teleop(
         host=args.host,
         port=args.port,
@@ -73,7 +79,7 @@ def main():
         ee_link=args.ee_link,
         joint_names=args.joint_names,
     )
-
+    robot.reset_joint_states()
     ee_pose = robot.get_ee_pose()
     teleop.set_pose(ee_pose)
 
@@ -82,13 +88,15 @@ def main():
         nonlocal node
         nonlocal robot
 
+        gripper_publisher.publish(String(data=params["gripper"]))
+
         if not robot.are_joint_states_received():
             return
 
         if not params["move"]:
             return
 
-        robot.servo_to_pose(pose)
+        robot.servo_to_pose(pose, 0.2)
 
     teleop.subscribe(teleop_pose_callback)
 

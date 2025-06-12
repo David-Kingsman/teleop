@@ -132,12 +132,6 @@ class Teleop:
         move = message["move"]
         position = message["position"]
         orientation = message["orientation"]
-        reference_frame = message["reference_frame"]
-
-        if reference_frame not in ["gripper", "base"]:
-            raise ValueError(
-                f'Unknown reference frame: {reference_frame} (should be "gripper" or "base")'
-            )
 
         position = np.array([position["x"], position["y"], position["z"]])
         quat = np.array(
@@ -164,8 +158,8 @@ class Teleop:
             if not are_close(
                 received_pose,
                 self.__previous_received_pose,
-                lin_tol=6e-2,
-                ang_tol=math.radians(25),
+                lin_tol=10e-2,
+                ang_tol=math.radians(35),
             ):
                 self.__logger.warning("Pose jump detected, resetting the pose")
                 self.__relative_pose_init = None
@@ -180,14 +174,11 @@ class Teleop:
             self.__previous_received_pose = None
 
         relative_pose = np.linalg.inv(self.__relative_pose_init) @ received_pose
-        if reference_frame == "gripper":
-            self.__pose = self.__absolute_pose_init @ relative_pose
-        else:
-            self.__pose = np.eye(4)
-            self.__pose[:3, 3] = self.__absolute_pose_init[:3, 3] + relative_pose[:3, 3]
-            self.__pose[:3, :3] = (
-                relative_pose[:3, :3] @ self.__absolute_pose_init[:3, :3]
-            )
+        self.__pose = np.eye(4)
+        self.__pose[:3, 3] = self.__absolute_pose_init[:3, 3] + relative_pose[:3, 3]
+        self.__pose[:3, :3] = (
+            relative_pose[:3, :3] @ self.__absolute_pose_init[:3, :3]
+        )
 
         # Notify the subscribers
         self.__notify_subscribers(self.__pose, message)

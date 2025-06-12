@@ -108,7 +108,7 @@
         <div class="bottom-controls">
             <div class="message" id="message"></div>
             <button class="button" id="exit-button">X</button>
-            <button class="button" id="frame-button">Base</button>
+            <button class="button" id="gripper-button">Gripper</button>
             <button class="button" id="move-button">Move</button>
         </div>
     </div>
@@ -140,13 +140,13 @@
         }
 
         let moveButtonPressed = false;
-        let referenceFrame = 'base';
+        let gripper = 'open';
 
         const appDom = document.querySelector('#app');
         const moveButtonDom = document.querySelector('#move-button');
         const exitButtonDom = document.querySelector('#exit-button');
         const startButtonDom = document.querySelector('#start-button');
-        const frameButtonDom = document.querySelector('#frame-button');
+        const gripperButtonDOM = document.querySelector('#gripper-button');
 
         moveButtonDom.addEventListener('touchstart', () => {
             moveButtonPressed = true;
@@ -155,14 +155,9 @@
             moveButtonPressed = false;
         });
 
-        frameButtonDom.addEventListener('click', () => {
-            if (referenceFrame === 'gripper') {
-                referenceFrame = 'base';
-                frameButtonDom.textContent = 'Base';
-            } else {
-                referenceFrame = 'gripper';
-                frameButtonDom.textContent = 'Gripper';
-            }
+        gripperButtonDOM.addEventListener('click', () => {
+            gripper = (gripper === 'open') ? 'close' : 'open';
+            gripperButtonDOM.textContent = `Gripper: ${gripper}`;
         });
 
         setMessage('Click the button to start WebXR');
@@ -226,7 +221,7 @@
                                             w: orientation.w
                                         },
                                         move: moveButtonPressed,
-                                        reference_frame: referenceFrame
+                                        gripper: gripper
                                     });
                                 }
                             } else {
