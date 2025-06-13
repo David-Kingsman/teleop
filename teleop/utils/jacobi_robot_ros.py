@@ -29,7 +29,6 @@ class JacobiRobotROS(JacobiRobot):
         min_angular_vel: float = 0.1,
         linear_gain: float = 5.0,
         angular_gain: float = 1.0,
-
     ):
         """
         Initialize ROS 2-enabled Jacobian robot.
@@ -184,6 +183,16 @@ class JacobiRobotROS(JacobiRobot):
         # Publish trajectory
         self.trajectory_publisher.publish(traj_msg)
         return True
+
+    def twist(self, linear: np.ndarray, angular: np.ndarray, dt: float = 0.1) -> bool:
+        """Send twist command to the robot."""
+        reached = super().twist(linear, angular, dt)
+        if reached is None:
+            self.node.get_logger().error("Failed to compute joint positions for twist")
+            return False
+
+        self.__send_joint_trajectory_topic(duration=dt)
+        return reached
 
     def servo_to_pose(self, target_pose: np.ndarray, dt: float = 0.1) -> bool:
         reached = super().servo_to_pose(target_pose, dt)

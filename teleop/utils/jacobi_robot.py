@@ -129,6 +129,38 @@ class JacobiRobot:
             self.model, self.data, self.ee_frame_id, pin.ReferenceFrame.LOCAL
         )
 
+    def twist(
+        self,
+        linear_velocity: np.ndarray,
+        angular_velocity_rpy: np.ndarray,
+        dt: float = 0.01,
+    ) -> bool:
+        # Move the end-effector with a given twist (velocity and angular velocity).
+        J = self.__compute_jacobian()
+        # Create desired spatial velocity vector
+        desired_spatial_vel = np.concatenate([linear_velocity, angular_velocity_rpy])
+        # Use SVD for more stable pseudo-inverse
+        U, s, Vt = np.linalg.svd(J, full_matrices=False)
+        s_inv = np.where(s > 1e-6, 1.0 / s, 0.0)  # Threshold small singular values
+        J_pinv = Vt.T @ np.diag(s_inv) @ U.T
+        joint_velocities = J_pinv @ desired_spatial_vel
+        # Apply joint velocity limits
+        for i in range(len(joint_velocities)):
+            if i < len(self.dq_max) and self.dq_max[i] > 0:
+                joint_velocities[i] = np.clip(
+                    joint_velocities[i], -self.dq_max[i], self.dq_max[i]
+                )
+            else:
+                # Default velocity limit if not specified
+                joint_velocities[i] = np.clip(joint_velocities[i], -2.0, 2.0)
+        # Check for excessive velocities (safety)
+        if np.max(np.abs(joint_velocities)) > self.max_joint_vel:
+            print("Warning: Excessive joint velocities detected, stopping!")
+            return False
+        # Update robot state
+        self.update_state(joint_velocities, dt=dt)
+        return True
+
     def servo_to_pose(
         self,
         target_pose: np.ndarray,
