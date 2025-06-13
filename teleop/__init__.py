@@ -6,6 +6,7 @@ import logging
 from werkzeug.serving import ThreadedWSGIServer
 from typing import Callable
 from flask import Flask, send_from_directory, request
+from flask_socketio import SocketIO, emit
 import transforms3d as t3d
 import numpy as np
 
@@ -99,9 +100,13 @@ class Teleop:
             )
 
         self.__app = Flask(__name__)
+        self.__app.config['SECRET_KEY'] = 'teleop_secret_key'
+        self.__socketio = SocketIO(self.__app, cors_allowed_origins="*")
+        
         log = logging.getLogger("werkzeug")
         log.setLevel(logging.ERROR)
         self.__register_routes()
+        self.__register_socketio_events()
 
     def set_pose(self, pose: np.ndarray) -> None:
         """
@@ -189,23 +194,28 @@ class Teleop:
             self.__logger.debug(f"Serving the {filename} file")
             return send_from_directory(THIS_DIR, filename)
 
-        @self.__app.route("/pose", methods=["POST"])
-        def pose():
-            json_data = request.get_json()
-            self.__logger.debug(f"Received a pose update request: {json_data}")
-            self.__update(json_data)
-            return {"status": "ok"}
-
-        @self.__app.route("/log", methods=["POST"])
-        def log():
-            json_data = request.get_json()
-            self.__logger.info(f"Received a log message: {json_data}")
-            return {"status": "ok"}
-
         @self.__app.route("/")
         def index():
             self.__logger.debug("Serving the index.html file")
             return send_from_directory(THIS_DIR, "index.html")
+
+    def __register_socketio_events(self):
+        @self.__socketio.on('connect')
+        def handle_connect():
+            self.__logger.info('Client connected')
+
+        @self.__socketio.on('disconnect')
+        def handle_disconnect():
+            self.__logger.info('Client disconnected')
+
+        @self.__socketio.on('pose')
+        def handle_pose(data):
+            self.__logger.debug(f"Received pose data: {data}")
+            self.__update(data)
+
+        @self.__socketio.on('log')
+        def handle_log(data):
+            self.__logger.info(f"Received log message: {data}")
 
     def run(self) -> None:
         """
@@ -228,4 +238,5 @@ class Teleop:
         """
         Stops the teleop server.
         """
-        self.__server.shutdown()
+        if self.__server:
+            self.__server.shutdown()

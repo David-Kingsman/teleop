@@ -7,6 +7,7 @@
     <title>Teleop</title>
 
     <script src='https://cdn.jsdelivr.net/npm/webxr-polyfill@latest/build/webxr-polyfill.js'></script>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -91,10 +92,31 @@
             overflow: hidden;
             display: none;
         }
+
+        .connection-status {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        .connected {
+            background-color: #4caf50;
+            color: white;
+        }
+
+        .disconnected {
+            background-color: #f44336;
+            color: white;
+        }
     </style>
 </head>
 
 <body>
+    <div class="connection-status" id="connection-status">Connecting...</div>
+
     <div class="container">
         <div class="intro-content">
             <h1>Teleop</h1>
@@ -116,27 +138,37 @@
     <script>
         var polyfill = new WebXRPolyfill();
 
+        // Initialize Socket.IO connection
+        const socket = io({
+            transports: ['websocket', 'polling']
+        });
+
+        const connectionStatus = document.querySelector('#connection-status');
+
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            connectionStatus.textContent = 'Connected';
+            connectionStatus.className = 'connection-status connected';
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+            connectionStatus.textContent = 'Disconnected';
+            connectionStatus.className = 'connection-status disconnected';
+        });
+
         const setMessage = (message) => {
             console.log(message);
-
             document.querySelector('#message').textContent = message;
             document.querySelector('#log').textContent = message;
         }
 
         const sendPose = (pose) => {
-            fetch('/pose', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(pose)
-            }).then((response) => {
-                return response.json();
-            }).then((data) => {
-                console.log(data);
-            }).catch((err) => {
-                console.error('Failed to send pose to server:', err);
-            });
+            if (socket.connected) {
+                socket.emit('pose', pose);
+            } else {
+                console.error('Socket not connected, cannot send pose');
+            }
         }
 
         let moveButtonPressed = false;
@@ -165,8 +197,8 @@
         startButtonDom.addEventListener('click', () => {
             if (navigator.xr) {
                 navigator.xr.requestSession('immersive-ar', {
-                    requiredFeatures: ['unbounded', 'local-floor'],
-                    optionalFeatures: ['dom-overlay', 'dom-overlay-for-handheld-ar'],
+                    requiredFeatures: ['local-floor'],
+                    optionalFeatures: ['unbounded', 'dom-overlay', 'dom-overlay-for-handheld-ar', 'hit-test'],
                     domOverlay: { root: document.querySelector('#app') }
                 }).then((session) => {
                     exitButtonDom.addEventListener('click', () => {
@@ -198,7 +230,8 @@
                                 let position = pose.transform.position;
                                 let orientation = pose.transform.orientation;
 
-                                if (time - lastSendTime > 100) {
+                                // Reduce update interval for WebSocket (can be more frequent than HTTP)
+                                if (time - lastSendTime > 50) { // 20Hz instead of 10Hz
                                     lastSendTime = time;
                                     if (pose.emulatedPosition) {
                                         setMessage('Viewer pose is emulated');

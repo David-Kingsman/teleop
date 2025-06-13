@@ -96,7 +96,7 @@ def main():
         if not params["move"]:
             return
 
-        robot.servo_to_pose(pose, 0.2)
+        robot.servo_to_pose(pose, 0.1)
 
     teleop.subscribe(teleop_pose_callback)
 
