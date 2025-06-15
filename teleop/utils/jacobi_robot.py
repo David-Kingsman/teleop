@@ -40,14 +40,14 @@ class JacobiRobot:
         urdf_path: str,
         ee_link: str = "end_effector",
         max_linear_vel: float = 0.4,
-        max_angular_vel: float = 0.9,
+        max_angular_vel: float = 1.8,
         max_linear_acc: float = 3.0,
         max_angular_acc: float = 6.0,
         max_joint_vel: float = 5.0,
         min_linear_vel: float = 0.03,
         min_angular_vel: float = 0.1,
         linear_gain: float = 20.0,
-        angular_gain: float = 4.0,
+        angular_gain: float = 8.0,
     ):
         """
         Initialize the Pinocchio robot with servo control capabilities.
