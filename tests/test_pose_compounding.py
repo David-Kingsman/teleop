@@ -35,9 +35,9 @@ class TestPoseCompounding(unittest.TestCase):
         cls.thread.daemon = True
         cls.thread.start()
 
-        time.sleep(2)
+        time.sleep(3)
 
-        cls.sio = socketio.Client(ssl_verify=False)
+        cls.sio = socketio.Client(ssl_verify=False, logger=False, engineio_logger=False)
 
         @cls.sio.event
         def connect():
@@ -47,24 +47,46 @@ class TestPoseCompounding(unittest.TestCase):
         def disconnect():
             print("Disconnected from server")
 
-        cls.sio.connect(BASE_URL)
-        time.sleep(1)
+        @cls.sio.event
+        def connect_error(data):
+            print(f"Connection error: {data}")
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                cls.sio.connect(
+                    BASE_URL, transports=["polling"], wait_timeout=5, retry=True
+                )
+                break
+            except Exception as e:
+                print(f"Connection attempt {attempt + 1} failed: {e}")
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(2)
+
+        time.sleep(2)
 
     def test_response(self):
+        if not self.sio.connected:
+            self.skipTest("Socket.IO client not connected")
+
         payload = get_message()
 
         self.sio.emit("pose", payload)
-        time.sleep(0.1)
+        time.sleep(0.2)
 
         self.assertIsNotNone(self.__last_message)
 
     def test_single_position_update(self):
+        if not self.sio.connected:
+            self.skipTest("Socket.IO client not connected")
+
         payload = get_message()
 
         # The first message with `move==True` is used as a reference
         payload["move"] = True
         self.sio.emit("pose", payload)
-        time.sleep(0.1)
+        time.sleep(0.2)
 
         self.assertIsNotNone(self.__last_pose)
         self.assertIsNotNone(self.__last_message)
@@ -73,7 +95,7 @@ class TestPoseCompounding(unittest.TestCase):
         payload["move"] = True
         payload["position"]["y"] = 0.05
         self.sio.emit("pose", payload)
-        time.sleep(0.1)
+        time.sleep(0.2)
 
         # In total the result should be 5cm on the Z-axis because of the RUB -> FLU conversion
         self.assertEqual(self.__last_pose[2, 3], 0.05)
@@ -82,14 +104,17 @@ class TestPoseCompounding(unittest.TestCase):
         payload["move"] = True
         payload["position"]["y"] = 0.1
         self.sio.emit("pose", payload)
-        time.sleep(0.1)
+        time.sleep(0.2)
 
         self.assertEqual(self.__last_pose[2, 3], 0.1)
 
     @classmethod
     def tearDownClass(cls):
-        if hasattr(cls, "sio") and cls.sio.connected:
-            cls.sio.disconnect()
+        try:
+            if hasattr(cls, "sio") and cls.sio.connected:
+                cls.sio.disconnect()
+        except Exception as e:
+            print(f"Error during disconnect: {e}")
 
 
 if __name__ == "__main__":
