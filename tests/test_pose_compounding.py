@@ -1,7 +1,7 @@
 import unittest
 import threading
-import requests
 import time
+import socketio
 from teleop import Teleop
 
 
@@ -35,34 +35,45 @@ class TestPoseCompounding(unittest.TestCase):
         cls.thread.daemon = True
         cls.thread.start()
 
+        time.sleep(2)
+
+        cls.sio = socketio.Client(ssl_verify=False)
+
+        @cls.sio.event
+        def connect():
+            print("Connected to server")
+
+        @cls.sio.event
+        def disconnect():
+            print("Disconnected from server")
+
+        cls.sio.connect(BASE_URL)
+        time.sleep(1)
+
     def test_response(self):
         payload = get_message()
-        response = requests.post(
-            f"{BASE_URL}/pose", json=payload, verify=False, timeout=5
-        )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "ok"})
+        self.sio.emit("pose", payload)
+        time.sleep(0.1)
+
+        self.assertIsNotNone(self.__last_message)
 
     def test_single_position_update(self):
         payload = get_message()
 
         # The first message with `move==True` is used as a reference
         payload["move"] = True
-        response = requests.post(
-            f"{BASE_URL}/pose", json=payload, verify=False, timeout=5
-        )
-        self.assertEqual(response.status_code, 200)
+        self.sio.emit("pose", payload)
+        time.sleep(0.1)
+
         self.assertIsNotNone(self.__last_pose)
         self.assertIsNotNone(self.__last_message)
 
         # Move the phone up by 5cm (Y-axis)
         payload["move"] = True
         payload["position"]["y"] = 0.05
-        response = requests.post(
-            f"{BASE_URL}/pose", json=payload, verify=False, timeout=5
-        )
-        self.assertEqual(response.status_code, 200)
+        self.sio.emit("pose", payload)
+        time.sleep(0.1)
 
         # In total the result should be 5cm on the Z-axis because of the RUB -> FLU conversion
         self.assertEqual(self.__last_pose[2, 3], 0.05)
@@ -70,16 +81,15 @@ class TestPoseCompounding(unittest.TestCase):
         # Move the phone up by another 5cm (Y-axis)
         payload["move"] = True
         payload["position"]["y"] = 0.1
-        response = requests.post(
-            f"{BASE_URL}/pose", json=payload, verify=False, timeout=5
-        )
-        self.assertEqual(response.status_code, 200)
+        self.sio.emit("pose", payload)
+        time.sleep(0.1)
 
         self.assertEqual(self.__last_pose[2, 3], 0.1)
 
     @classmethod
     def tearDownClass(cls):
-        cls.teleop.stop()
+        if hasattr(cls, "sio") and cls.sio.connected:
+            cls.sio.disconnect()
 
 
 if __name__ == "__main__":
