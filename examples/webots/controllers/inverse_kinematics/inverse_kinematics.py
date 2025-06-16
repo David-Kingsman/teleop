@@ -13,7 +13,7 @@ class RobotArm(Robot):
         self.__jacobi = None
         with tempfile.NamedTemporaryFile(suffix=".urdf", delete=False) as file:
             file.write(self.getUrdf().encode("utf-8"))
-            self.__jacobi = JacobiRobot(file.name, ee_frame_name="wrist_3_link")
+            self.__jacobi = JacobiRobot(file.name, ee_link="wrist_3_link")
 
         # Initialize the arm motors and encoders.
         timestep = int(self.getBasicTimeStep())

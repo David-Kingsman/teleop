@@ -56,6 +56,27 @@ You can override the default topic names using standard ROS 2 arguments:
 python3 -m teleop.ros2 --ros-args -r target_frame:=/some_other_topic_name
 ```
 
+### ROS 2 Interface with IK
+
+No servoing support, no problem.
+`teleop` provides servoing support through the [JacobiRobotROS](#JacobiRobotROS) util class.
+
+Panda arm usage example:
+```bash
+python3 -m teleop.ros2_ik \
+  --joint-names panda_joint1 panda_joint2 panda_joint3 panda_joint4 panda_joint5 panda_joint6 panda_joint7 \
+  --ee-link panda_hand \
+  --ros-args -r /joint_trajectory:=/panda_arm_controller/joint_trajectory
+```
+
+xArm usage example:
+```bash
+python3 -m teleop.ros2_ik \
+  --joint-names joint1 joint2 joint3 joint4 joint5 joint6 \
+  --ee-link link6 \
+  --ros-args -r /joint_trajectory:=/joint_trajectory_controller/joint_trajectory
+```
+
 ### Custom Interface
 
 For most applications, you will need to create a custom interface to interact with your robot arm. Here’s an example:
@@ -93,7 +114,7 @@ The package includes several utility classes to simplify robot arm integration:
 > [!NOTE]  
 > To use the utility classes, install the package with the additional dependencies:
 > ```bash
-> pip install teleop[pin]
+> pip install teleop[utils]
 > ```
 
 ### JacobiRobot
@@ -110,7 +131,7 @@ A Pinocchio-based servoing and kinematics for robotic manipulators.
 ```python
 from teleop.utils.jacobi_robot import JacobiRobot
 
-robot = JacobiRobot("robot.urdf", ee_frame_name="end_effector")
+robot = JacobiRobot("robot.urdf", ee_link="end_effector")
 target_pose = np.eye(4)  # 4x4 transformation matrix
 reached = robot.servo_to_pose(target_pose, dt=0.01)
 ```
@@ -135,7 +156,7 @@ node = rclpy.create_node("robot_control")
 
 robot = JacobiRobotROS(
     node=node,
-    ee_frame_name="end_effector",
+    ee_link="end_effector",
     joint_names=["joint1", "joint2", "joint3"]
 )
 

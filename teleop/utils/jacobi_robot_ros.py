@@ -16,10 +16,10 @@ class JacobiRobotROS(JacobiRobot):
         self,
         node: Node,
         robot_description_topic: str = "/robot_description",
-        ee_frame_name: str = "end_effector",
+        ee_link: str = "end_effector",
         joint_names: Optional[List[str]] = None,
         joint_state_topic: str = "/joint_states",
-        position_command_topic: str = "/joint_trajectory_controller/joint_trajectory",
+        position_command_topic: str = "/joint_trajectory",
         max_linear_vel: float = 0.4,
         max_angular_vel: float = 0.9,
         max_linear_acc: float = 3.0,
@@ -27,9 +27,8 @@ class JacobiRobotROS(JacobiRobot):
         max_joint_vel: float = 5.0,
         min_linear_vel: float = 0.03,
         min_angular_vel: float = 0.1,
-        linear_gain: float = 20.0,
-        angular_gain: float = 4.0,
-
+        linear_gain: float = 5.0,
+        angular_gain: float = 1.0,
     ):
         """
         Initialize ROS 2-enabled Jacobian robot.
@@ -37,7 +36,7 @@ class JacobiRobotROS(JacobiRobot):
         Args:
             node: ROS 2 node instance
             robot_description_topic: Topic for robot description (URDF)
-            ee_frame_name: End-effector frame name
+            ee_link: End-effector frame name
             joint_names: List of joint names (if None, will be extracted from URDF)
             joint_state_topic: Topic for joint states
             position_command_topic: Topic for position commands
@@ -59,7 +58,7 @@ class JacobiRobotROS(JacobiRobot):
         # Initialize JacobiRobot
         super().__init__(
             urdf_path,
-            ee_frame_name,
+            ee_link,
             max_linear_vel,
             max_angular_vel,
             max_linear_acc,
@@ -166,7 +165,6 @@ class JacobiRobotROS(JacobiRobot):
         # Create trajectory message
         traj_msg = JointTrajectory()
         traj_msg.joint_names = self.joint_names
-        traj_msg.header.stamp = self.node.get_clock().now().to_msg()
 
         # End point
         end_point = JointTrajectoryPoint()
@@ -185,6 +183,16 @@ class JacobiRobotROS(JacobiRobot):
         # Publish trajectory
         self.trajectory_publisher.publish(traj_msg)
         return True
+
+    def twist(self, linear: np.ndarray, angular: np.ndarray, dt: float = 0.1) -> bool:
+        """Send twist command to the robot."""
+        reached = super().twist(linear, angular, dt)
+        if reached is None:
+            self.node.get_logger().error("Failed to compute joint positions for twist")
+            return False
+
+        self.__send_joint_trajectory_topic(duration=dt)
+        return reached
 
     def servo_to_pose(self, target_pose: np.ndarray, dt: float = 0.1) -> bool:
         reached = super().servo_to_pose(target_pose, dt)
@@ -226,7 +234,7 @@ def main():
         # Initialize robot with node reference
         robot = JacobiRobotROS(
             node=node,
-            ee_frame_name="panda_hand",
+            ee_link="panda_hand",
             joint_names=[
                 "panda_joint1",
                 "panda_joint2",

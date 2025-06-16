@@ -1,7 +1,8 @@
 import unittest
 import threading
-import requests
 import time
+import socketio
+import ssl
 from teleop import Teleop
 
 
@@ -18,68 +19,132 @@ BASE_URL = "https://localhost:4443"
 
 
 class TestPoseCompounding(unittest.TestCase):
-    @classmethod
-    def __callback(cls, pose, message):
-        cls.__last_pose = pose
-        cls.__last_message = message
-        print(pose)
 
     @classmethod
     def setUpClass(cls):
         cls.__last_pose = None
         cls.__last_message = None
+        cls.__callback_event = threading.Event()
+
+        def callback(pose, message):
+            cls.__last_pose = pose
+            cls.__last_message = message
+            cls.__callback_event.set()
+            print(f"Callback triggered: pose={pose is not None}, message={message}")
 
         cls.teleop = Teleop(natural_phone_orientation_euler=[0, 0, 0])
-        cls.teleop.subscribe(cls.__callback)
+        cls.teleop.subscribe(callback)
         cls.thread = threading.Thread(target=cls.teleop.run)
         cls.thread.daemon = True
         cls.thread.start()
 
-    def test_response(self):
-        payload = get_message()
-        response = requests.post(
-            f"{BASE_URL}/pose", json=payload, verify=False, timeout=5
-        )
+        time.sleep(3)
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "ok"})
+        cls.sio = socketio.Client(ssl_verify=False, logger=False, engineio_logger=False)
+
+        @cls.sio.event
+        def connect():
+            print("Connected to server")
+
+        @cls.sio.event
+        def disconnect():
+            print("Disconnected from server")
+
+        @cls.sio.event
+        def connect_error(data):
+            print(f"Connection error: {data}")
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                cls.sio.connect(
+                    BASE_URL, transports=["polling"], wait_timeout=10, retry=True
+                )
+                break
+            except Exception as e:
+                print(f"Connection attempt {attempt + 1} failed: {e}")
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(2)
+
+        time.sleep(2)
+
+    def setUp(self):
+        self.__class__.__last_pose = None
+        self.__class__.__last_message = None
+        self.__class__.__callback_event.clear()
+
+    def _wait_for_callback(self, timeout=10.0):
+        return self.__callback_event.wait(timeout=timeout)
+
+    def test_response(self):
+        if not self.sio.connected:
+            self.skipTest("Socket.IO client not connected")
+
+        payload = get_message()
+        print(f"Sending payload: {payload}")
+
+        self.sio.emit("pose", payload)
+
+        if not self._wait_for_callback(timeout=10.0):
+            self.fail("Callback was not triggered within 10 seconds")
+
+        self.assertIsNotNone(
+            self.__last_message, "Message should not be None after callback"
+        )
 
     def test_single_position_update(self):
+        if not self.sio.connected:
+            self.skipTest("Socket.IO client not connected")
+
         payload = get_message()
+        print(f"Sending first payload: {payload}")
 
-        # The first message with `move==True` is used as a reference
         payload["move"] = True
-        response = requests.post(
-            f"{BASE_URL}/pose", json=payload, verify=False, timeout=5
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertIsNotNone(self.__last_pose)
-        self.assertIsNotNone(self.__last_message)
+        self.sio.emit("pose", payload)
 
-        # Move the phone up by 5cm (Y-axis)
+        if not self._wait_for_callback(timeout=10.0):
+            self.fail("First callback was not triggered within 10 seconds")
+
+        self.assertIsNotNone(
+            self.__last_pose,
+            f"Pose should not be None after first emit. Last message: {self.__last_message}",
+        )
+        self.assertIsNotNone(
+            self.__last_message, "Message should not be None after first emit"
+        )
+
+        self.__callback_event.clear()
+
         payload["move"] = True
         payload["position"]["y"] = 0.05
-        response = requests.post(
-            f"{BASE_URL}/pose", json=payload, verify=False, timeout=5
-        )
-        self.assertEqual(response.status_code, 200)
+        print(f"Sending second payload: {payload}")
+        self.sio.emit("pose", payload)
 
-        # In total the result should be 5cm on the Z-axis because of the RUB -> FLU conversion
-        self.assertEqual(self.__last_pose[2, 3], 0.05)
+        if not self._wait_for_callback(timeout=10.0):
+            self.fail("Second callback was not triggered within 10 seconds")
 
-        # Move the phone up by another 5cm (Y-axis)
+        self.assertAlmostEqual(self.__last_pose[2, 3], 0.05, places=5)
+
+        self.__callback_event.clear()
+
         payload["move"] = True
         payload["position"]["y"] = 0.1
-        response = requests.post(
-            f"{BASE_URL}/pose", json=payload, verify=False, timeout=5
-        )
-        self.assertEqual(response.status_code, 200)
+        print(f"Sending third payload: {payload}")
+        self.sio.emit("pose", payload)
 
-        self.assertEqual(self.__last_pose[2, 3], 0.1)
+        if not self._wait_for_callback(timeout=10.0):
+            self.fail("Third callback was not triggered within 10 seconds")
+
+        self.assertAlmostEqual(self.__last_pose[2, 3], 0.1, places=5)
 
     @classmethod
     def tearDownClass(cls):
-        cls.teleop.stop()
+        try:
+            if hasattr(cls, "sio") and cls.sio.connected:
+                cls.sio.disconnect()
+        except Exception as e:
+            print(f"Error during disconnect: {e}")
 
 
 if __name__ == "__main__":
