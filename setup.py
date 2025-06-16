@@ -16,13 +16,14 @@ for match in re.findall(r"\]\((?!http)([^)]+)\)", long_description):
 
 setup(
     name="teleop",
-    version="0.0.8",
+    version="0.0.9",
     packages=["teleop", "teleop.basic", "teleop.ros2", "teleop.utils", "teleop.ros2_ik"],
     long_description=long_description,
     long_description_content_type="text/markdown",
     description="Turns your phone into a robot arm teleoperation device by leveraging the WebXR API",
     install_requires=[
         "Flask",
+        "Flask-SocketIO",
         "numpy",
         "transforms3d",
         "werkzeug",
