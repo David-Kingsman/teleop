@@ -114,6 +114,15 @@ class JacobiRobot:
         se3_pose = self.data.oMf[self.ee_frame_id]
         return se3_to_matrix(se3_pose)
 
+    def get_link_pose(self, link_name) -> np.ndarray:
+        """Get current link pose as 4x4 transformation matrix."""
+        if link_name not in [f.name for f in self.model.frames]:
+            raise ValueError(f"[ERROR] Frame '{link_name}' not found in the model.")
+        self.__update_kinematics()
+        frame_id = self.model.getFrameId(link_name)
+        se3_pose = self.data.oMf[frame_id]
+        return se3_to_matrix(se3_pose)
+
     def __get_ee_velocity(self) -> np.ndarray:
         """Get current end-effector velocity."""
         self.__update_kinematics()
