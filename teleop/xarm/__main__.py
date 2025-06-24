@@ -85,7 +85,7 @@ def servo(arm, pose):
     y = pose[1, 3] * 1000
     z = pose[2, 3] * 1000
     roll, pitch, yaw = t3d.euler.mat2euler(pose[:3, :3])
-    error = arm.set_servo_cartesian([x, y, z, roll, pitch, yaw])
+    error = arm.set_servo_cartesian([x, y, z, roll, pitch, yaw], speed=100, mvacc=100)
     return error
 
 
