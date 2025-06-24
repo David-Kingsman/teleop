@@ -223,17 +223,17 @@
             for (let inputSource of inputSources) {
                 if (inputSource.gamepad && inputSource.handedness === 'right') {
                     const gamepad = inputSource.gamepad;
-                    if (gamepad.buttons[0] && gamepad.buttons[0].pressed) {
+                    if (gamepad.buttons[1] && gamepad.buttons[1].pressed) {
                         moveButtonPressed = true;
                     } else {
                         moveButtonPressed = false;
                     }
 
-                    if (gamepad.buttons[1] && gamepad.buttons[1].pressed && !gamepad.buttons[1].wasPressed) {
+                    if (gamepad.buttons[0] && gamepad.buttons[0].pressed && !gamepad.buttons[0].wasPressed) {
                         gripper = (gripper === 'open') ? 'close' : 'open';
                         gripperButtonDOM.textContent = `Gripper: ${gripper}`;
                     }
-                    gamepad.buttons[1].wasPressed = gamepad.buttons[1].pressed;
+                    gamepad.buttons[0].wasPressed = gamepad.buttons[0].pressed;
                 }
             }
         }
