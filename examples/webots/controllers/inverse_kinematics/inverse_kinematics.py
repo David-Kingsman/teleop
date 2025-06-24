@@ -40,7 +40,7 @@ class RobotArm(Robot):
 
 def main():
     robot = RobotArm()
-    teleop = Teleop()
+    teleop = Teleop(natural_phone_orientation_euler=[0, 0, 0])
     target_pose = None
 
     def on_teleop_callback(pose, message):
