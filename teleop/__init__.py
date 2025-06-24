@@ -5,8 +5,8 @@ import socket
 import logging
 from werkzeug.serving import ThreadedWSGIServer
 from typing import Callable
-from flask import Flask, send_from_directory, request
-from flask_socketio import SocketIO, emit
+from flask import Flask, send_from_directory
+from flask_socketio import SocketIO
 import transforms3d as t3d
 import numpy as np
 
@@ -100,9 +100,9 @@ class Teleop:
             )
 
         self.__app = Flask(__name__)
-        self.__app.config['SECRET_KEY'] = 'teleop_secret_key'
+        self.__app.config["SECRET_KEY"] = "teleop_secret_key"
         self.__socketio = SocketIO(self.__app, cors_allowed_origins="*")
-        
+
         log = logging.getLogger("werkzeug")
         log.setLevel(logging.ERROR)
         self.__register_routes()
@@ -178,12 +178,13 @@ class Teleop:
             self.__absolute_pose_init = self.__pose
             self.__previous_received_pose = None
 
-        relative_pose = np.linalg.inv(self.__relative_pose_init) @ received_pose
-        self.__pose = np.eye(4)
-        self.__pose[:3, 3] = self.__absolute_pose_init[:3, 3] + relative_pose[:3, 3]
-        self.__pose[:3, :3] = (
-            relative_pose[:3, :3] @ self.__absolute_pose_init[:3, :3]
+        relative_position = received_pose[:3, 3] - self.__relative_pose_init[:3, 3]
+        relative_orientation = received_pose[:3, :3] @ np.linalg.inv(
+            self.__relative_pose_init[:3, :3]
         )
+        self.__pose = np.eye(4)
+        self.__pose[:3, 3] = self.__absolute_pose_init[:3, 3] + relative_position
+        self.__pose[:3, :3] = relative_orientation @ self.__absolute_pose_init[:3, :3]
 
         # Notify the subscribers
         self.__notify_subscribers(self.__pose, message)
@@ -200,20 +201,20 @@ class Teleop:
             return send_from_directory(THIS_DIR, "index.html")
 
     def __register_socketio_events(self):
-        @self.__socketio.on('connect')
+        @self.__socketio.on("connect")
         def handle_connect():
-            self.__logger.info('Client connected')
+            self.__logger.info("Client connected")
 
-        @self.__socketio.on('disconnect')
+        @self.__socketio.on("disconnect")
         def handle_disconnect():
-            self.__logger.info('Client disconnected')
+            self.__logger.info("Client disconnected")
 
-        @self.__socketio.on('pose')
+        @self.__socketio.on("pose")
         def handle_pose(data):
             self.__logger.debug(f"Received pose data: {data}")
             self.__update(data)
 
-        @self.__socketio.on('log')
+        @self.__socketio.on("log")
         def handle_log(data):
             self.__logger.info(f"Received log message: {data}")
 
