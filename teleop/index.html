@@ -138,7 +138,6 @@
     <script>
         var polyfill = new WebXRPolyfill();
 
-        // Initialize Socket.IO connection
         const socket = io({
             transports: ['websocket', 'polling']
         });
@@ -173,6 +172,7 @@
 
         let moveButtonPressed = false;
         let gripper = 'open';
+        let isVRDevice = false;
 
         const appDom = document.querySelector('#app');
         const moveButtonDom = document.querySelector('#move-button');
@@ -192,14 +192,59 @@
             gripperButtonDOM.textContent = `Gripper: ${gripper}`;
         });
 
+        function detectDeviceType(session) {
+            const inputSources = session.inputSources;
+            for (let inputSource of inputSources) {
+                if (inputSource.handedness === 'right' && inputSource.targetRayMode === 'tracked-pointer') {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function getPoseFromInputSource(session, frame, referenceSpace) {
+            const inputSources = session.inputSources;
+            for (let inputSource of inputSources) {
+                if (inputSource.handedness === 'right' && inputSource.targetRayMode === 'tracked-pointer') {
+                    const pose = frame.getPose(inputSource.targetRaySpace, referenceSpace);
+                    if (pose) {
+                        return {
+                            position: pose.transform.position,
+                            orientation: pose.transform.orientation
+                        };
+                    }
+                }
+            }
+            return null;
+        }
+
+        function handleControllerInput(session, frame) {
+            const inputSources = session.inputSources;
+            for (let inputSource of inputSources) {
+                if (inputSource.gamepad && inputSource.handedness === 'right') {
+                    const gamepad = inputSource.gamepad;
+                    if (gamepad.buttons[0] && gamepad.buttons[0].pressed) {
+                        moveButtonPressed = true;
+                    } else {
+                        moveButtonPressed = false;
+                    }
+
+                    if (gamepad.buttons[1] && gamepad.buttons[1].pressed && !gamepad.buttons[1].wasPressed) {
+                        gripper = (gripper === 'open') ? 'close' : 'open';
+                        gripperButtonDOM.textContent = `Gripper: ${gripper}`;
+                    }
+                    gamepad.buttons[1].wasPressed = gamepad.buttons[1].pressed;
+                }
+            }
+        }
+
         setMessage('Click the button to start WebXR');
         let lastSendTime = performance.now();
         startButtonDom.addEventListener('click', () => {
             if (navigator.xr) {
-                navigator.xr.requestSession('immersive-ar', {
+                navigator.xr.requestSession('immersive-vr', {
                     requiredFeatures: ['local-floor'],
-                    optionalFeatures: ['unbounded', 'dom-overlay', 'dom-overlay-for-handheld-ar', 'hit-test'],
-                    domOverlay: { root: document.querySelector('#app') }
+                    optionalFeatures: ['hand-tracking', 'dom-overlay']
                 }).then((session) => {
                     exitButtonDom.addEventListener('click', () => {
                         session.end()
@@ -208,6 +253,11 @@
                     session.addEventListener('end', () => {
                         appDom.style.display = 'none';
                         setMessage('Click the button to start WebXR');
+                    });
+
+                    session.addEventListener('inputsourceschange', () => {
+                        isVRDevice = detectDeviceType(session);
+                        setMessage(isVRDevice ? 'VR controllers detected' : 'Using device pose');
                     });
 
                     appDom.style.display = 'block';
@@ -223,21 +273,34 @@
                         let xrReferenceSpace = referenceSpace;
 
                         function onXRFrame(time, frame) {
-                            let pose = frame.getViewerPose(xrReferenceSpace);
-                            pose = pose ? pose.views[0] : null;
+                            let position, orientation;
 
-                            if (pose) {
-                                let position = pose.transform.position;
-                                let orientation = pose.transform.orientation;
-
-                                // Reduce update interval for WebSocket (can be more frequent than HTTP)
-                                if (time - lastSendTime > 50) { // 20Hz instead of 10Hz
-                                    lastSendTime = time;
-                                    if (pose.emulatedPosition) {
-                                        setMessage('Viewer pose is emulated');
+                            if (isVRDevice) {
+                                handleControllerInput(session, frame);
+                                const controllerPose = getPoseFromInputSource(session, frame, xrReferenceSpace);
+                                if (controllerPose) {
+                                    position = controllerPose.position;
+                                    orientation = controllerPose.orientation;
+                                } else {
+                                    const viewerPose = frame.getViewerPose(xrReferenceSpace);
+                                    if (viewerPose && viewerPose.views[0]) {
+                                        position = viewerPose.views[0].transform.position;
+                                        orientation = viewerPose.views[0].transform.orientation;
                                     }
+                                }
+                            } else {
+                                const viewerPose = frame.getViewerPose(xrReferenceSpace);
+                                if (viewerPose && viewerPose.views[0]) {
+                                    position = viewerPose.views[0].transform.position;
+                                    orientation = viewerPose.views[0].transform.orientation;
+                                }
+                            }
+
+                            if (position && orientation) {
+                                if (time - lastSendTime > 50) {
+                                    lastSendTime = time;
                                     setMessage(`
-                                        Position: x=${position.x.toFixed(3)}, y=${position.y.toFixed(3)}, z=${position.z.toFixed(3)}
+                                        ${isVRDevice ? 'Controller' : 'Device'} Position: x=${position.x.toFixed(3)}, y=${position.y.toFixed(3)}, z=${position.z.toFixed(3)}
                                         Orientation: x=${orientation.x.toFixed(2)}, y=${orientation.y.toFixed(2)}, z=${orientation.z.toFixed(2)}, w=${orientation.w.toFixed(2)}
                                         Move: ${moveButtonPressed}
                                     `);
@@ -258,7 +321,7 @@
                                     });
                                 }
                             } else {
-                                setMessage('No viewer pose available');
+                                setMessage('No pose available');
                             }
                             session.requestAnimationFrame(onXRFrame);
                         }
@@ -267,7 +330,78 @@
                         setMessage('Failed to request reference space: ' + err);
                     });
                 }).catch((err) => {
-                    setMessage('Failed to start WebXR session: ' + err);
+                    navigator.xr.requestSession('immersive-ar', {
+                        requiredFeatures: ['local-floor'],
+                        optionalFeatures: ['unbounded', 'dom-overlay', 'dom-overlay-for-handheld-ar', 'hit-test'],
+                        domOverlay: { root: document.querySelector('#app') }
+                    }).then((session) => {
+                        exitButtonDom.addEventListener('click', () => {
+                            session.end()
+                        });
+
+                        session.addEventListener('end', () => {
+                            appDom.style.display = 'none';
+                            setMessage('Click the button to start WebXR');
+                        });
+
+                        appDom.style.display = 'block';
+                        moveButtonPressed = false;
+
+                        const glCanvas = document.createElement('canvas');
+                        const gl = glCanvas.getContext('webgl', { xrCompatible: true });
+                        session.updateRenderState({
+                            baseLayer: new XRWebGLLayer(session, gl)
+                        });
+
+                        session.requestReferenceSpace('local-floor').then((referenceSpace) => {
+                            let xrReferenceSpace = referenceSpace;
+
+                            function onXRFrame(time, frame) {
+                                let pose = frame.getViewerPose(xrReferenceSpace);
+                                pose = pose ? pose.views[0] : null;
+
+                                if (pose) {
+                                    let position = pose.transform.position;
+                                    let orientation = pose.transform.orientation;
+
+                                    if (time - lastSendTime > 50) {
+                                        lastSendTime = time;
+                                        if (pose.emulatedPosition) {
+                                            setMessage('Viewer pose is emulated');
+                                        }
+                                        setMessage(`
+                                            Position: x=${position.x.toFixed(3)}, y=${position.y.toFixed(3)}, z=${position.z.toFixed(3)}
+                                            Orientation: x=${orientation.x.toFixed(2)}, y=${orientation.y.toFixed(2)}, z=${orientation.z.toFixed(2)}, w=${orientation.w.toFixed(2)}
+                                            Move: ${moveButtonPressed}
+                                        `);
+                                        sendPose({
+                                            position: {
+                                                x: position.x,
+                                                y: position.y,
+                                                z: position.z
+                                            },
+                                            orientation: {
+                                                x: orientation.x,
+                                                y: orientation.y,
+                                                z: orientation.z,
+                                                w: orientation.w
+                                            },
+                                            move: moveButtonPressed,
+                                            gripper: gripper
+                                        });
+                                    }
+                                } else {
+                                    setMessage('No viewer pose available');
+                                }
+                                session.requestAnimationFrame(onXRFrame);
+                            }
+                            session.requestAnimationFrame(onXRFrame);
+                        }).catch((err) => {
+                            setMessage('Failed to request reference space: ' + err);
+                        });
+                    }).catch((err) => {
+                        setMessage('Failed to start WebXR session: ' + err);
+                    });
                 });
             } else {
                 setMessage('WebXR is not supported on this device');
