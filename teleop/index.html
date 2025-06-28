@@ -42,22 +42,13 @@
             line-height: 1.5;
         }
 
-        @media (min-width: 768px) {
-            .container {
-                max-width: 400px;
-            }
-
-            .intro-content h1 {
-                font-size: 28px;
-            }
-        }
-
-        .bottom-controls {
+        .controls {
             position: absolute;
-            bottom: 0;
+            top: 0;
             left: 0;
             width: 100%;
-            padding: 20px;
+            height: 100px;
+            padding: 15px;
             text-align: center;
         }
 
@@ -119,14 +110,16 @@
     <div class="container">
         <div class="intro-content">
             <h1>Teleop</h1>
-            <p>Teleop your robot arm with ease. No hardware. No firmware. Just your phone.</p>
+            <p>Teleop your robot arm with ease. No hardware. No firmware. Just your phone (or VR joystick).</p>
             <button class="button" id="start-button">Start</button>
             <div class="message" id="log"></div>
         </div>
     </div>
 
     <div class="app" id="app">
-        <div class="bottom-controls">
+        <div class="speed-control"></div>
+
+        <div class="controls">
             <div class="message" id="message"></div>
             <button class="button" id="exit-button">X</button>
             <button class="button" id="gripper-button">Gripper</button>

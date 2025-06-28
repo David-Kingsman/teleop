@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teleop</title>
+    <script src="teleop-ui.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+    </style>
+</head>
+
+<body>
+    <teleop-ui id="controller"></teleop-ui>
+
+    <script>
+        const controller = document.getElementById('controller');
+        controller.updateServerDiagnostics({
+            connected: true,
+        });
+        controller.updateLocalStats({
+            position: { x: 0, y: 0, z: 0 },
+            fps: 60,
+        });
+        controller.addEventListener('motionchange', (event) => {
+            console.log('Motion event:', event.detail.enabled);
+        });
+        controller.addEventListener('reservedbuttonachange', (event) => {
+            console.log('Reserved Button A event:', event.detail.active);
+        });
+        controller.addEventListener('reservedbuttonbchange', (event) => {
+            console.log('Reserved Button B event:', event.detail.active);
+        });
+        controller.addEventListener('gripperchange', (event) => {
+            console.log('Gripper event:', event.detail.engaged);
+        });
+        controller.addEventListener('scalechange', (event) => {
+            console.log('Scale event:', event.detail.scale);
+        });
+        console.log('Scale = ', controller.getScale());
+        console.log('Gripper = ', controller.isGripperEngaged());
+        console.log('Motion Enabled = ', controller.isMotionEnabled());
+        console.log('Reserved Button A Active = ', controller.isReservedButtonAActive());
+        console.log('Reserved Button B Active = ', controller.isReservedButtonBActive());
+    </script>
+</body>
+
+</html>
