@@ -10,7 +10,6 @@ import transforms3d as t3d
 import numpy as np
 import json
 
-
 TF_RUB2FLU = np.array([[0, 0, -1, 0], [-1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1]])
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
 
@@ -50,6 +49,71 @@ def are_close(a, b=None, lin_tol=1e-9, ang_tol=1e-9):
     roll = math.atan2(d[2, 1], d[2, 2])
     rpy = np.array([roll, pitch, yaw])
     return np.allclose(rpy, np.zeros(3), atol=ang_tol)
+
+
+def slerp(q1, q2, t):
+    """Spherical linear interpolation between two quaternions."""
+    q1 = q1 / np.linalg.norm(q1)
+    q2 = q2 / np.linalg.norm(q2)
+
+    dot = np.dot(q1, q2)
+
+    # If the dot product is negative, use the shortest path
+    if dot < 0.0:
+        q2 = -q2
+        dot = -dot
+
+    DOT_THRESHOLD = 0.9995
+    if dot > DOT_THRESHOLD:
+        # Linear interpolation fallback for nearly identical quaternions
+        result = q1 + t * (q2 - q1)
+        return result / np.linalg.norm(result)
+
+    theta_0 = np.arccos(dot)
+    theta = theta_0 * t
+
+    q3 = q2 - q1 * dot
+    q3 = q3 / np.linalg.norm(q3)
+
+    return q1 * np.cos(theta) + q3 * np.sin(theta)
+
+
+def interpolate_transforms(T1, T2, alpha):
+    """
+    Interpolate between two 4x4 transformation matrices using SLERP + linear translation.
+
+    Args:
+        T1 (np.ndarray): Start transform (4x4)
+        T2 (np.ndarray): End transform (4x4)
+        alpha (float): Interpolation factor [0, 1]
+
+    Returns:
+        np.ndarray: Interpolated transform (4x4)
+    """
+    assert T1.shape == (4, 4) and T2.shape == (4, 4)
+    assert 0.0 <= alpha <= 1.0
+
+    # Translation
+    t1 = T1[:3, 3]
+    t2 = T2[:3, 3]
+    t_interp = (1 - alpha) * t1 + alpha * t2
+
+    # Rotation
+    R1 = T1[:3, :3]
+    R2 = T2[:3, :3]
+    q1 = t3d.quaternions.mat2quat(R1)
+    q2 = t3d.quaternions.mat2quat(R2)
+
+    # SLERP
+    q_interp = slerp(q1, q2, alpha)
+    R_interp = t3d.quaternions.quat2mat(q_interp)
+
+    # Final transform
+    T_interp = np.eye(4)
+    T_interp[:3, :3] = R_interp
+    T_interp[:3, 3] = t_interp
+
+    return T_interp
 
 
 class ConnectionManager:
@@ -150,6 +214,7 @@ class Teleop:
         move = message["move"]
         position = message["position"]
         orientation = message["orientation"]
+        scale = message.get("scale", 1.0)
 
         position = np.array([position["x"], position["y"], position["z"]])
         quat = np.array(
@@ -198,6 +263,12 @@ class Teleop:
         self.__pose = np.eye(4)
         self.__pose[:3, 3] = self.__absolute_pose_init[:3, 3] + relative_position
         self.__pose[:3, :3] = relative_orientation @ self.__absolute_pose_init[:3, :3]
+
+        # Apply scale
+        if scale != 1.0:
+            self.__pose = interpolate_transforms(
+                self.__absolute_pose_init, self.__pose, scale
+            )
 
         # Notify the subscribers
         self.__notify_subscribers(self.__pose, message)

@@ -43,16 +43,6 @@
             line-height: 1.5;
         }
 
-        .controls {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100px;
-            padding: 15px;
-            text-align: center;
-        }
-
         .button {
             background-color: #ffca28;
             color: #1a237e;
@@ -63,15 +53,6 @@
             cursor: pointer;
             transition: background-color 0.3s ease;
             user-select: none;
-        }
-
-        .button:hover {
-            background-color: #ffb300;
-        }
-
-        .message {
-            margin: 10px;
-            font-size: 12px;
         }
 
         .app {
@@ -142,6 +123,10 @@
         }
 
         // WebSocket connection
+        const serverStats = {
+            connection: 'Not connected',
+        };
+        teleopUI.updateServerDiagnostics(serverStats);
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws`;
         let socket;
@@ -157,6 +142,8 @@
                 isConnected = true;
                 connectionStatus.textContent = 'Connected';
                 connectionStatus.className = 'connection-status connected';
+                serverStats.connection = 'Connected';
+                teleopUI.updateServerDiagnostics(serverStats);
             };
 
             socket.onclose = () => {
@@ -164,6 +151,8 @@
                 isConnected = false;
                 connectionStatus.textContent = 'Disconnected';
                 connectionStatus.className = 'connection-status disconnected';
+                serverStats.connection = 'Disconnected';
+                teleopUI.updateServerDiagnostics(serverStats);
 
                 // Attempt to reconnect after 3 seconds
                 setTimeout(connectWebSocket, 3000);
@@ -171,6 +160,8 @@
 
             socket.onerror = (error) => {
                 console.error('WebSocket error:', error);
+                serverStats.connection = 'Error: ' + error.message;
+                teleopUI.updateServerDiagnostics(serverStats);
             };
 
             socket.onmessage = (event) => {

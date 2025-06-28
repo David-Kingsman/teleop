@@ -30,7 +30,7 @@ class TeleopUI extends HTMLElement {
                     flex-direction: column;
                     width: 100%;
                     height: 100vh;
-                    background: #1a1a1a;
+                    background: #000;
                     color: white;
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
                     padding: 10px;
