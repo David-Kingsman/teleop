@@ -3,6 +3,7 @@ import os
 import math
 import socket
 import logging
+from werkzeug.serving import ThreadedWSGIServer
 from typing import Callable
 from flask import Flask, send_from_directory
 from flask_socketio import SocketIO
@@ -226,14 +227,11 @@ class Teleop:
             f"The phone web app should be available at https://{get_local_ip()}:{self.__port}"
         )
 
-        self.__socketio.run(
-            self.__app,
+        self.__server = ThreadedWSGIServer(
+            app=self.__app,
             host=self.__host,
             port=self.__port,
             ssl_context=self.__ssl_context,
-            debug=False,
-            use_reloader=False,
-            log_output=False,
         )
         self.__server.serve_forever()
 
