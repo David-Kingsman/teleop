@@ -15,12 +15,12 @@
         }
 
         body {
-            font-family: 'Arial', sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
-            background: linear-gradient(to bottom, #1a237e, #3949ab);
+            background: linear-gradient(to bottom, #000, #070707);
             color: white;
             overflow: hidden;
         }
@@ -34,18 +34,18 @@
         .intro-content h1 {
             font-size: 24px;
             margin-bottom: 10px;
-            color: #ffc107;
+            text-transform: uppercase;
         }
 
         .intro-content p {
-            font-size: 16px;
+            font-size: 14px;
             margin-bottom: 20px;
             line-height: 1.5;
+            color: #666;
         }
 
         .button {
-            background-color: #ffca28;
-            color: #1a237e;
+            background-color: #fff;
             border: none;
             padding: 10px 20px;
             font-size: 18px;
@@ -53,6 +53,7 @@
             cursor: pointer;
             transition: background-color 0.3s ease;
             user-select: none;
+            text-transform: uppercase;
         }
 
         .app {
@@ -92,7 +93,7 @@
     <div class="container">
         <div class="intro-content">
             <h1>Teleop</h1>
-            <p>Teleop your robot arm with ease. No hardware. No firmware. Just your phone (or VR joystick).</p>
+            <p>Teleop your robot arm with ease. No hardware. No firmware. Just your phone. Or VR headset.</p>
             <button class="button" id="start-button">Start</button>
             <div class="message" id="log"></div>
         </div>
