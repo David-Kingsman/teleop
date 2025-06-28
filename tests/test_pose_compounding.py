@@ -27,6 +27,8 @@ class TestPoseCompounding(unittest.TestCase):
         cls.__last_message = None
         cls.__callback_event = threading.Event()
         cls.__ws = None
+        cls.__ws_connected = threading.Event()  # Use Event for connection tracking
+        cls.__ws_error = None
 
         def callback(pose, message):
             cls.__last_pose = pose
@@ -52,15 +54,19 @@ class TestPoseCompounding(unittest.TestCase):
 
         def on_error(ws, error):
             print(f"WebSocket error: {error}")
+            cls.__ws_error = error
+            cls.__ws_connected.clear()
 
         def on_close(ws, close_status_code, close_msg):
-            print("WebSocket connection closed")
+            print(f"WebSocket connection closed: {close_status_code} - {close_msg}")
+            cls.__ws_connected.clear()
 
         def on_open(ws):
             print("WebSocket connection opened")
+            cls.__ws_connected.set()  # Signal that connection is established
 
         # Create WebSocket connection
-        websocket.enableTrace(False)  # Set to True for debugging
+        websocket.enableTrace(True)  # Enable for debugging
         
         # Use wss:// for HTTPS or ws:// for HTTP
         url = BASE_URL.replace("ws://", "wss://") if "4443" in BASE_URL else BASE_URL
@@ -86,7 +92,16 @@ class TestPoseCompounding(unittest.TestCase):
         cls.__ws_thread.daemon = True
         cls.__ws_thread.start()
 
-        time.sleep(2)
+        # Wait for connection to be established
+        connection_established = cls.__ws_connected.wait(timeout=10)
+        if not connection_established:
+            if cls.__ws_error:
+                raise Exception(f"WebSocket connection failed: {cls.__ws_error}")
+            else:
+                raise Exception("WebSocket connection timeout")
+        
+        # Give a small buffer after connection
+        time.sleep(0.5)
 
     def setUp(self):
         self.__class__.__last_pose = None
@@ -98,14 +113,27 @@ class TestPoseCompounding(unittest.TestCase):
 
     def _send_message(self, payload):
         """Send message to WebSocket server"""
+        # Check if connection is still active
+        if not self.__ws_connected.is_set():
+            raise Exception("WebSocket connection not active")
+            
+        if not hasattr(self.__ws, 'sock') or self.__ws.sock is None:
+            raise Exception("WebSocket socket is None")
+            
         message = {
             "type": "pose",
             "data": payload
         }
-        self.__ws.send(json.dumps(message))
+        
+        try:
+            self.__ws.send(json.dumps(message))
+        except Exception as e:
+            # Connection might have been closed, try to reconnect
+            self.__ws_connected.clear()
+            raise Exception(f"Failed to send message: {e}")
 
     def test_response(self):
-        if not hasattr(self.__ws, 'sock') or self.__ws.sock is None:
+        if not self.__ws_connected.is_set():
             self.skipTest("WebSocket client not connected")
 
         payload = get_message()
@@ -121,7 +149,7 @@ class TestPoseCompounding(unittest.TestCase):
         )
 
     def test_single_position_update(self):
-        if not hasattr(self.__ws, 'sock') or self.__ws.sock is None:
+        if not self.__ws_connected.is_set():
             self.skipTest("WebSocket client not connected")
 
         payload = get_message()
