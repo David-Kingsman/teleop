@@ -242,9 +242,10 @@
         let lastSendTime = performance.now();
         startButtonDom.addEventListener('click', () => {
             if (navigator.xr) {
-                navigator.xr.requestSession('immersive-vr', {
+                navigator.xr.requestSession('immersive-ar', {
                     requiredFeatures: ['local-floor'],
-                    optionalFeatures: ['hand-tracking', 'dom-overlay']
+                    optionalFeatures: ['hand-tracking', 'unbounded', 'dom-overlay', 'dom-overlay-for-handheld-ar', 'hit-test'],
+                    domOverlay: { root: document.querySelector('#app') }
                 }).then((session) => {
                     exitButtonDom.addEventListener('click', () => {
                         session.end()
@@ -297,7 +298,7 @@
                             }
 
                             if (position && orientation) {
-                                if (time - lastSendTime > 50) {
+                                if (time - lastSendTime > 10) {
                                     lastSendTime = time;
                                     setMessage(`
                                         ${isVRDevice ? 'Controller' : 'Device'} Position: x=${position.x.toFixed(3)}, y=${position.y.toFixed(3)}, z=${position.z.toFixed(3)}
@@ -330,78 +331,7 @@
                         setMessage('Failed to request reference space: ' + err);
                     });
                 }).catch((err) => {
-                    navigator.xr.requestSession('immersive-ar', {
-                        requiredFeatures: ['local-floor'],
-                        optionalFeatures: ['unbounded', 'dom-overlay', 'dom-overlay-for-handheld-ar', 'hit-test'],
-                        domOverlay: { root: document.querySelector('#app') }
-                    }).then((session) => {
-                        exitButtonDom.addEventListener('click', () => {
-                            session.end()
-                        });
-
-                        session.addEventListener('end', () => {
-                            appDom.style.display = 'none';
-                            setMessage('Click the button to start WebXR');
-                        });
-
-                        appDom.style.display = 'block';
-                        moveButtonPressed = false;
-
-                        const glCanvas = document.createElement('canvas');
-                        const gl = glCanvas.getContext('webgl', { xrCompatible: true });
-                        session.updateRenderState({
-                            baseLayer: new XRWebGLLayer(session, gl)
-                        });
-
-                        session.requestReferenceSpace('local-floor').then((referenceSpace) => {
-                            let xrReferenceSpace = referenceSpace;
-
-                            function onXRFrame(time, frame) {
-                                let pose = frame.getViewerPose(xrReferenceSpace);
-                                pose = pose ? pose.views[0] : null;
-
-                                if (pose) {
-                                    let position = pose.transform.position;
-                                    let orientation = pose.transform.orientation;
-
-                                    if (time - lastSendTime > 50) {
-                                        lastSendTime = time;
-                                        if (pose.emulatedPosition) {
-                                            setMessage('Viewer pose is emulated');
-                                        }
-                                        setMessage(`
-                                            Position: x=${position.x.toFixed(3)}, y=${position.y.toFixed(3)}, z=${position.z.toFixed(3)}
-                                            Orientation: x=${orientation.x.toFixed(2)}, y=${orientation.y.toFixed(2)}, z=${orientation.z.toFixed(2)}, w=${orientation.w.toFixed(2)}
-                                            Move: ${moveButtonPressed}
-                                        `);
-                                        sendPose({
-                                            position: {
-                                                x: position.x,
-                                                y: position.y,
-                                                z: position.z
-                                            },
-                                            orientation: {
-                                                x: orientation.x,
-                                                y: orientation.y,
-                                                z: orientation.z,
-                                                w: orientation.w
-                                            },
-                                            move: moveButtonPressed,
-                                            gripper: gripper
-                                        });
-                                    }
-                                } else {
-                                    setMessage('No viewer pose available');
-                                }
-                                session.requestAnimationFrame(onXRFrame);
-                            }
-                            session.requestAnimationFrame(onXRFrame);
-                        }).catch((err) => {
-                            setMessage('Failed to request reference space: ' + err);
-                        });
-                    }).catch((err) => {
-                        setMessage('Failed to start WebXR session: ' + err);
-                    });
+                    setMessage('Failed to start WebXR session: ' + err);
                 });
             } else {
                 setMessage('WebXR is not supported on this device');
