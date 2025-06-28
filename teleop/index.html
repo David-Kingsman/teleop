@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Teleop</title>
+    <script src="teleop-ui.js"></script>
 
     <style>
         * {
@@ -117,22 +118,18 @@
     </div>
 
     <div class="app" id="app">
-        <div class="speed-control"></div>
-
-        <div class="controls">
-            <div class="message" id="message"></div>
-            <button class="button" id="exit-button">X</button>
-            <button class="button" id="gripper-button">Gripper</button>
-            <button class="button" id="move-button">Move</button>
-        </div>
+        <teleop-ui id="teleop-ui"></teleop-ui>
     </div>
 
     <script>
+        const teleopUI = document.querySelector('#teleop-ui');
+        const startButtonDom = document.querySelector('#start-button');
+        const appDom = document.querySelector('#app');
+
         // FPS Counter
+        let fps = 0;
         let frameCount = 0;
         let lastFpsTime = performance.now();
-        let fps = 0;
-        const fpsCounter = document.querySelector('#fps-counter');
 
         function updateFPS() {
             frameCount++;
@@ -185,10 +182,11 @@
         // Connect on page load
         connectWebSocket();
 
-        const setMessage = (message) => {
-            console.log(message);
-            document.querySelector('#message').textContent = message;
-            document.querySelector('#log').textContent = message;
+        // Message handling
+        let message = '';
+        const setMessage = (msg) => {
+            console.log(msg);
+            message = msg;
         }
 
         const sendPose = (pose) => {
@@ -202,36 +200,7 @@
             }
         }
 
-        const sendLog = (logMessage) => {
-            if (isConnected && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    type: 'log',
-                    data: logMessage
-                }));
-            }
-        }
-
-        let moveButtonPressed = false;
-        let gripper = 'open';
         let isVRDevice = false;
-
-        const appDom = document.querySelector('#app');
-        const moveButtonDom = document.querySelector('#move-button');
-        const exitButtonDom = document.querySelector('#exit-button');
-        const startButtonDom = document.querySelector('#start-button');
-        const gripperButtonDOM = document.querySelector('#gripper-button');
-
-        moveButtonDom.addEventListener('touchstart', () => {
-            moveButtonPressed = true;
-        });
-        moveButtonDom.addEventListener('touchend', () => {
-            moveButtonPressed = false;
-        });
-
-        gripperButtonDOM.addEventListener('click', () => {
-            gripper = (gripper === 'open') ? 'close' : 'open';
-            gripperButtonDOM.textContent = `Gripper: ${gripper}`;
-        });
 
         function detectDeviceType(session) {
             const inputSources = session.inputSources;
@@ -288,7 +257,7 @@
                     optionalFeatures: ['hand-tracking', 'unbounded', 'dom-overlay', 'dom-overlay-for-handheld-ar', 'hit-test', 'high-fixed-foveation-level'],
                     domOverlay: { root: document.querySelector('#app') }
                 }).then((session) => {
-                    exitButtonDom.addEventListener('click', () => {
+                    teleopUI.addEventListener('exit', () => {
                         session.end()
                     });
 
@@ -358,12 +327,7 @@
                             if (position && orientation) {
                                 if (time - lastSendTime > 10) {
                                     lastSendTime = time;
-                                    setMessage(`
-                                        ${isVRDevice ? 'Controller' : 'Device'} Position: x=${position.x.toFixed(3)}, y=${position.y.toFixed(3)}, z=${position.z.toFixed(3)}
-                                        Orientation: x=${orientation.x.toFixed(2)}, y=${orientation.y.toFixed(2)}, z=${orientation.z.toFixed(2)}, w=${orientation.w.toFixed(2)}
-                                        Move: ${moveButtonPressed} | FPS: ${fps}
-                                    `);
-                                    sendPose({
+                                    const state = {
                                         position: {
                                             x: position.x,
                                             y: position.y,
@@ -375,9 +339,17 @@
                                             z: orientation.z,
                                             w: orientation.w
                                         },
-                                        move: moveButtonPressed,
-                                        gripper: gripper
-                                    });
+                                        move: teleopUI.isMotionEnabled(),
+                                        gripper: teleopUI.isGripperEngaged() ? 'close' : 'open',
+                                        fps: fps,
+                                        scale: teleopUI.getScale(),
+                                        reservedButtonA: teleopUI.isReservedButtonAActive(),
+                                        reservedButtonB: teleopUI.isReservedButtonBActive(),
+                                        device: isVRDevice ? 'VR' : 'Phone',
+                                        message: message
+                                    }
+                                    sendPose(state);
+                                    teleopUI.updateLocalStats(state);
                                 }
                             } else {
                                 setMessage('No pose available');

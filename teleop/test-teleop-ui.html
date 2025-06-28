@@ -42,6 +42,9 @@
         controller.addEventListener('scalechange', (event) => {
             console.log('Scale event:', event.detail.scale);
         });
+        controller.addEventListener('exit', () => {
+            console.log('Exit event');
+        });
         console.log('Scale = ', controller.getScale());
         console.log('Gripper = ', controller.isGripperEngaged());
         console.log('Motion Enabled = ', controller.isMotionEnabled());
