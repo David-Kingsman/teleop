@@ -28,6 +28,7 @@ setup(
         "transforms3d",
         "pytest",
         "requests",
+        "websocket-client",
     ],
     extras_require={
         "utils": ["pin"],
