@@ -23,7 +23,7 @@ setup(
     description="Turns your phone into a robot arm teleoperation device by leveraging the WebXR API",
     install_requires=[
         "fastapi",
-        "uvicorn",
+        "uvicorn[standard]",
         "numpy",
         "transforms3d",
         "pytest",
