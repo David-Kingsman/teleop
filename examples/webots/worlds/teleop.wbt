@@ -8,6 +8,7 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/project
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/appearances/protos/CementTiles.proto"
 
 WorldInfo {
+  basicTimeStep 10
 }
 Viewpoint {
   orientation 0.12086428145072244 0.9228327289041858 -0.36574797324476627 0.6877052442483729

@@ -16,16 +16,16 @@ class RobotArm(Robot):
             self.__jacobi = JacobiRobot(file.name, ee_link="wrist_3_link")
 
         # Initialize the arm motors and encoders.
-        timestep = int(self.getBasicTimeStep())
+        self.timestep = int(self.getBasicTimeStep())
         for joint_name in self.__jacobi.get_joint_names():
             motor = self.getDevice(joint_name)
             motor.setVelocity(1.0)
             position_sensor = motor.getPositionSensor()
-            position_sensor.enable(timestep)
+            position_sensor.enable(self.timestep)
             self.__motors[joint_name] = motor
 
     def move_to_position(self, pose):
-        self.__jacobi.servo_to_pose(pose)
+        self.__jacobi.servo_to_pose(pose, dt=self.timestep / 1000.0)
         for name, motor in self.__motors.items():
             motor.setPosition(self.__jacobi.get_joint_position(name))
 

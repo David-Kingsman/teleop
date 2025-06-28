@@ -45,7 +45,10 @@ def are_close(a, b=None, lin_tol=1e-9, ang_tol=1e-9):
     d = np.linalg.inv(a) @ b
     if not np.allclose(d[:3, 3], np.zeros(3), atol=lin_tol):
         return False
-    rpy = t3d.euler.mat2euler(d[:3, :3])
+    yaw = math.atan2(d[1, 0], d[0, 0])
+    pitch = math.asin(-d[2, 0])
+    roll = math.atan2(d[2, 1], d[2, 2])
+    rpy = np.array([roll, pitch, yaw])
     return np.allclose(rpy, np.zeros(3), atol=ang_tol)
 
 
@@ -173,7 +176,7 @@ class Teleop:
             if not are_close(
                 received_pose,
                 self.__previous_received_pose,
-                lin_tol=10e-2,
+                lin_tol=0.05,
                 ang_tol=math.radians(35),
             ):
                 self.__logger.warning("Pose jump detected, resetting the pose")

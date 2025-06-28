@@ -109,6 +109,7 @@
             background-color: #f44336;
             color: white;
         }
+
     </style>
 </head>
 
@@ -134,6 +135,22 @@
     </div>
 
     <script>
+        // FPS Counter
+        let frameCount = 0;
+        let lastFpsTime = performance.now();
+        let fps = 0;
+        const fpsCounter = document.querySelector('#fps-counter');
+
+        function updateFPS() {
+            frameCount++;
+            const currentTime = performance.now();
+            if (currentTime - lastFpsTime >= 1000) { // Update every second
+                fps = Math.round((frameCount * 1000) / (currentTime - lastFpsTime));
+                frameCount = 0;
+                lastFpsTime = currentTime;
+            }
+        }
+
         // WebSocket connection
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -157,7 +174,7 @@
                 isConnected = false;
                 connectionStatus.textContent = 'Disconnected';
                 connectionStatus.className = 'connection-status disconnected';
-                
+
                 // Attempt to reconnect after 3 seconds
                 setTimeout(connectWebSocket, 3000);
             };
@@ -275,7 +292,7 @@
             if (navigator.xr) {
                 navigator.xr.requestSession('immersive-ar', {
                     requiredFeatures: ['local-floor'],
-                    optionalFeatures: ['hand-tracking', 'unbounded', 'dom-overlay', 'dom-overlay-for-handheld-ar', 'hit-test'],
+                    optionalFeatures: ['hand-tracking', 'unbounded', 'dom-overlay', 'dom-overlay-for-handheld-ar', 'hit-test', 'high-fixed-foveation-level'],
                     domOverlay: { root: document.querySelector('#app') }
                 }).then((session) => {
                     exitButtonDom.addEventListener('click', () => {
@@ -296,15 +313,32 @@
                     moveButtonPressed = false;
 
                     const glCanvas = document.createElement('canvas');
-                    const gl = glCanvas.getContext('webgl', { xrCompatible: true });
+                    const gl = glCanvas.getContext('webgl', {
+                        xrCompatible: true,
+                        antialias: false,
+                        alpha: false,
+                        depth: false,
+                        stencil: false,
+                        preserveDrawingBuffer: false,
+                        powerPreference: "high-performance"
+                    });
                     session.updateRenderState({
-                        baseLayer: new XRWebGLLayer(session, gl)
+                        baseLayer: new XRWebGLLayer(session, gl, {
+                            antialias: false,
+                            depth: false,
+                            stencil: false,
+                            alpha: false,
+                            multiview: false
+                        })
                     });
 
                     session.requestReferenceSpace('local-floor').then((referenceSpace) => {
                         let xrReferenceSpace = referenceSpace;
 
                         function onXRFrame(time, frame) {
+                            // Update FPS counter
+                            updateFPS();
+
                             let position, orientation;
 
                             if (isVRDevice) {
@@ -334,7 +368,7 @@
                                     setMessage(`
                                         ${isVRDevice ? 'Controller' : 'Device'} Position: x=${position.x.toFixed(3)}, y=${position.y.toFixed(3)}, z=${position.z.toFixed(3)}
                                         Orientation: x=${orientation.x.toFixed(2)}, y=${orientation.y.toFixed(2)}, z=${orientation.z.toFixed(2)}, w=${orientation.w.toFixed(2)}
-                                        Move: ${moveButtonPressed}
+                                        Move: ${moveButtonPressed} | FPS: ${fps}
                                     `);
                                     sendPose({
                                         position: {
