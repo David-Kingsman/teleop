@@ -1,14 +1,14 @@
-import ssl
 import os
 import math
 import socket
 import logging
-from werkzeug.serving import ThreadedWSGIServer
-from typing import Callable
-from flask import Flask, send_from_directory
-from flask_socketio import SocketIO
+from typing import Callable, List
+import uvicorn
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 import transforms3d as t3d
 import numpy as np
+import json
 
 
 TF_RUB2FLU = np.array([[0, 0, -1, 0], [-1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1]])
@@ -49,21 +49,42 @@ def are_close(a, b=None, lin_tol=1e-9, ang_tol=1e-9):
     return np.allclose(rpy, np.zeros(3), atol=ang_tol)
 
 
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        await websocket.send_text(message)
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except:
+                # Remove broken connections
+                self.active_connections.remove(connection)
+
+
 class Teleop:
     """
-    Teleop class for controlling a robot remotely.
+    Teleop class for controlling a robot remotely using FastAPI and WebSockets.
 
     Args:
         host (str, optional): The host IP address. Defaults to "0.0.0.0".
         port (int, optional): The port number. Defaults to 4443.
-        ssl_context (ssl.SSLContext, optional): The SSL context for secure communication. Defaults to None.
     """
 
     def __init__(
         self,
         host="0.0.0.0",
         port=4443,
-        ssl_context=None,
         natural_phone_orientation_euler=None,
         natural_phone_position=None,
     ):
@@ -71,10 +92,8 @@ class Teleop:
         self.__logger.setLevel(logging.INFO)
         self.__logger.addHandler(logging.StreamHandler())
 
-        self.__server = None
         self.__host = host
         self.__port = port
-        self.__ssl_context = ssl_context
 
         self.__relative_pose_init = None
         self.__absolute_pose_init = None
@@ -92,21 +111,12 @@ class Teleop:
             [1, 1, 1],
         )
 
-        if self.__ssl_context is None:
-            self.__ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS)
-            self.__ssl_context.load_cert_chain(
-                certfile=os.path.join(THIS_DIR, "cert.pem"),
-                keyfile=os.path.join(THIS_DIR, "key.pem"),
-            )
+        self.__app = FastAPI()
+        self.__manager = ConnectionManager()
 
-        self.__app = Flask(__name__)
-        self.__app.config["SECRET_KEY"] = "teleop_secret_key"
-        self.__socketio = SocketIO(self.__app, cors_allowed_origins="*")
-
-        log = logging.getLogger("werkzeug")
-        log.setLevel(logging.ERROR)
-        self.__register_routes()
-        self.__register_socketio_events()
+        # Configure logging
+        logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+        self.__setup_routes()
 
     def set_pose(self, pose: np.ndarray) -> None:
         """
@@ -189,34 +199,39 @@ class Teleop:
         # Notify the subscribers
         self.__notify_subscribers(self.__pose, message)
 
-    def __register_routes(self):
-        @self.__app.route("/<path:filename>")
-        def serve_file(filename):
-            self.__logger.debug(f"Serving the {filename} file")
-            return send_from_directory(THIS_DIR, filename)
-
-        @self.__app.route("/")
-        def index():
+    def __setup_routes(self):
+        @self.__app.get("/")
+        async def index():
             self.__logger.debug("Serving the index.html file")
-            return send_from_directory(THIS_DIR, "index.html")
+            return FileResponse(os.path.join(THIS_DIR, "index.html"))
 
-    def __register_socketio_events(self):
-        @self.__socketio.on("connect")
-        def handle_connect():
+        @self.__app.get("/{filename:path}")
+        async def serve_file(filename: str):
+            self.__logger.debug(f"Serving the {filename} file")
+            file_path = os.path.join(THIS_DIR, filename)
+            if os.path.exists(file_path):
+                return FileResponse(file_path)
+            return {"error": "File not found"}
+
+        @self.__app.websocket("/ws")
+        async def websocket_endpoint(websocket: WebSocket):
+            await self.__manager.connect(websocket)
             self.__logger.info("Client connected")
 
-        @self.__socketio.on("disconnect")
-        def handle_disconnect():
-            self.__logger.info("Client disconnected")
+            try:
+                while True:
+                    data = await websocket.receive_text()
+                    message = json.loads(data)
 
-        @self.__socketio.on("pose")
-        def handle_pose(data):
-            self.__logger.debug(f"Received pose data: {data}")
-            self.__update(data)
+                    if message.get("type") == "pose":
+                        self.__logger.debug(f"Received pose data: {message['data']}")
+                        self.__update(message["data"])
+                    elif message.get("type") == "log":
+                        self.__logger.info(f"Received log message: {message['data']}")
 
-        @self.__socketio.on("log")
-        def handle_log(data):
-            self.__logger.info(f"Received log message: {data}")
+            except WebSocketDisconnect:
+                self.__manager.disconnect(websocket)
+                self.__logger.info("Client disconnected")
 
     def run(self) -> None:
         """
@@ -227,17 +242,21 @@ class Teleop:
             f"The phone web app should be available at https://{get_local_ip()}:{self.__port}"
         )
 
-        self.__server = ThreadedWSGIServer(
-            app=self.__app,
+        ssl_keyfile = os.path.join(THIS_DIR, "key.pem")
+        ssl_certfile = os.path.join(THIS_DIR, "cert.pem")
+
+        uvicorn.run(
+            self.__app,
             host=self.__host,
             port=self.__port,
-            ssl_context=self.__ssl_context,
+            ssl_keyfile=ssl_keyfile,
+            ssl_certfile=ssl_certfile,
+            log_level="warning",
         )
-        self.__server.serve_forever()
 
     def stop(self) -> None:
         """
         Stops the teleop server.
         """
-        if self.__server:
-            self.__server.shutdown()
+        # FastAPI/uvicorn handles shutdown automatically
+        pass

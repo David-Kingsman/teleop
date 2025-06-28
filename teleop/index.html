@@ -6,8 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Teleop</title>
 
-    <script src='https://cdn.jsdelivr.net/npm/webxr-polyfill@latest/build/webxr-polyfill.js'></script>
-    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -136,25 +134,46 @@
     </div>
 
     <script>
-        var polyfill = new WebXRPolyfill();
-
-        const socket = io({
-            transports: ['websocket', 'polling']
-        });
+        // WebSocket connection
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
+        let socket;
+        let isConnected = false;
 
         const connectionStatus = document.querySelector('#connection-status');
 
-        socket.on('connect', () => {
-            console.log('Connected to server');
-            connectionStatus.textContent = 'Connected';
-            connectionStatus.className = 'connection-status connected';
-        });
+        function connectWebSocket() {
+            socket = new WebSocket(wsUrl);
 
-        socket.on('disconnect', () => {
-            console.log('Disconnected from server');
-            connectionStatus.textContent = 'Disconnected';
-            connectionStatus.className = 'connection-status disconnected';
-        });
+            socket.onopen = () => {
+                console.log('Connected to server');
+                isConnected = true;
+                connectionStatus.textContent = 'Connected';
+                connectionStatus.className = 'connection-status connected';
+            };
+
+            socket.onclose = () => {
+                console.log('Disconnected from server');
+                isConnected = false;
+                connectionStatus.textContent = 'Disconnected';
+                connectionStatus.className = 'connection-status disconnected';
+                
+                // Attempt to reconnect after 3 seconds
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            socket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            socket.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                console.log('Received message:', message);
+            };
+        }
+
+        // Connect on page load
+        connectWebSocket();
 
         const setMessage = (message) => {
             console.log(message);
@@ -163,10 +182,22 @@
         }
 
         const sendPose = (pose) => {
-            if (socket.connected) {
-                socket.emit('pose', pose);
+            if (isConnected && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'pose',
+                    data: pose
+                }));
             } else {
-                console.error('Socket not connected, cannot send pose');
+                console.error('WebSocket not connected, cannot send pose');
+            }
+        }
+
+        const sendLog = (logMessage) => {
+            if (isConnected && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'log',
+                    data: logMessage
+                }));
             }
         }
 

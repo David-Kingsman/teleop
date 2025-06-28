@@ -22,11 +22,10 @@ setup(
     long_description_content_type="text/markdown",
     description="Turns your phone into a robot arm teleoperation device by leveraging the WebXR API",
     install_requires=[
-        "Flask",
-        "Flask-SocketIO",
+        "fastapi",
+        "uvicorn",
         "numpy",
         "transforms3d",
-        "werkzeug",
         "pytest",
         "requests",
     ],
