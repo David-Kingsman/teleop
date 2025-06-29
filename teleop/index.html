@@ -83,7 +83,6 @@
             background-color: #f44336;
             color: white;
         }
-
     </style>
 </head>
 
@@ -104,7 +103,57 @@
     </div>
 
     <script>
+        class TeleopJoystick {
+            constructor() {
+                this.gripper = 'open';
+                this.moveButtonPressed = false;
+                this.reservedButtonA = false;
+                this.reservedButtonB = false;
+                this.scale = 1.0;
+            }
+
+            handleControllerInput(session, frame) {
+                const inputSources = session.inputSources;
+                for (let inputSource of inputSources) {
+                    if (inputSource.gamepad && inputSource.handedness === 'right') {
+                        const gamepad = inputSource.gamepad;
+                        if (gamepad.buttons[1] && gamepad.buttons[1].pressed) {
+                            this.moveButtonPressed = true;
+                        } else {
+                            this.moveButtonPressed = false;
+                        }
+
+                        if (gamepad.buttons[0] && gamepad.buttons[0].pressed && !gamepad.buttons[0].wasPressed) {
+                            this.gripper = (this.gripper === 'open') ? 'close' : 'open';
+                        }
+                        gamepad.buttons[0].wasPressed = gamepad.buttons[0].pressed;
+                    }
+                }
+            }
+
+            isMotionEnabled() {
+                return this.moveButtonPressed;
+            }
+
+            isGripperEngaged() {
+                return this.gripper === 'close';
+            }
+
+            isReservedButtonAActive() {
+                return this.reservedButtonA;
+            }
+
+            isReservedButtonBActive() {
+                return this.reservedButtonB;
+            }
+
+            getScale() {
+                return this.scale;
+            }
+        }
+
         const teleopUI = document.querySelector('#teleop-ui');
+        const teleopJoystick = new TeleopJoystick();
         const startButtonDom = document.querySelector('#start-button');
         const appDom = document.querySelector('#app');
 
@@ -220,26 +269,6 @@
             return null;
         }
 
-        function handleControllerInput(session, frame) {
-            const inputSources = session.inputSources;
-            for (let inputSource of inputSources) {
-                if (inputSource.gamepad && inputSource.handedness === 'right') {
-                    const gamepad = inputSource.gamepad;
-                    if (gamepad.buttons[1] && gamepad.buttons[1].pressed) {
-                        moveButtonPressed = true;
-                    } else {
-                        moveButtonPressed = false;
-                    }
-
-                    if (gamepad.buttons[0] && gamepad.buttons[0].pressed && !gamepad.buttons[0].wasPressed) {
-                        gripper = (gripper === 'open') ? 'close' : 'open';
-                        gripperButtonDOM.textContent = `Gripper: ${gripper}`;
-                    }
-                    gamepad.buttons[0].wasPressed = gamepad.buttons[0].pressed;
-                }
-            }
-        }
-
         setMessage('Click the button to start WebXR');
         let lastSendTime = performance.now();
         startButtonDom.addEventListener('click', () => {
@@ -264,7 +293,6 @@
                     });
 
                     appDom.style.display = 'block';
-                    moveButtonPressed = false;
 
                     const glCanvas = document.createElement('canvas');
                     const gl = glCanvas.getContext('webgl', {
@@ -296,7 +324,7 @@
                             let position, orientation;
 
                             if (isVRDevice) {
-                                handleControllerInput(session, frame);
+                                teleopJoystick.handleControllerInput(session, frame);
                                 const controllerPose = getPoseFromInputSource(session, frame, xrReferenceSpace);
                                 if (controllerPose) {
                                     position = controllerPose.position;
@@ -318,6 +346,7 @@
 
                             if (position && orientation) {
                                 if (time - lastSendTime > 10) {
+                                    const teleopFrontEnd = (isVRDevice) ? teleopJoystick : teleopUI;
                                     lastSendTime = time;
                                     const state = {
                                         position: {
@@ -331,12 +360,12 @@
                                             z: orientation.z,
                                             w: orientation.w
                                         },
-                                        move: teleopUI.isMotionEnabled(),
-                                        gripper: teleopUI.isGripperEngaged() ? 'close' : 'open',
+                                        move: teleopFrontEnd.isMotionEnabled(),
+                                        gripper: teleopFrontEnd.isGripperEngaged() ? 'close' : 'open',
                                         fps: fps,
-                                        scale: teleopUI.getScale(),
-                                        reservedButtonA: teleopUI.isReservedButtonAActive(),
-                                        reservedButtonB: teleopUI.isReservedButtonBActive(),
+                                        scale: teleopFrontEnd.getScale(),
+                                        reservedButtonA: teleopFrontEnd.isReservedButtonAActive(),
+                                        reservedButtonB: teleopFrontEnd.isReservedButtonBActive(),
                                         device: isVRDevice ? 'VR' : 'Phone',
                                         message: message
                                     }
