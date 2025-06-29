@@ -5,9 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Teleop</title>
+    <script src="teleop-ui.js"></script>
 
-    <script src='https://cdn.jsdelivr.net/npm/webxr-polyfill@latest/build/webxr-polyfill.js'></script>
-    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -16,12 +15,12 @@
         }
 
         body {
-            font-family: 'Arial', sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
-            background: linear-gradient(to bottom, #1a237e, #3949ab);
+            background: linear-gradient(to bottom, #000, #070707);
             color: white;
             overflow: hidden;
         }
@@ -35,37 +34,18 @@
         .intro-content h1 {
             font-size: 24px;
             margin-bottom: 10px;
-            color: #ffc107;
+            text-transform: uppercase;
         }
 
         .intro-content p {
-            font-size: 16px;
+            font-size: 14px;
             margin-bottom: 20px;
             line-height: 1.5;
-        }
-
-        @media (min-width: 768px) {
-            .container {
-                max-width: 400px;
-            }
-
-            .intro-content h1 {
-                font-size: 28px;
-            }
-        }
-
-        .bottom-controls {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            padding: 20px;
-            text-align: center;
+            color: #666;
         }
 
         .button {
-            background-color: #ffca28;
-            color: #1a237e;
+            background-color: #fff;
             border: none;
             padding: 10px 20px;
             font-size: 18px;
@@ -73,15 +53,7 @@
             cursor: pointer;
             transition: background-color 0.3s ease;
             user-select: none;
-        }
-
-        .button:hover {
-            background-color: #ffb300;
-        }
-
-        .message {
-            margin: 10px;
-            font-size: 12px;
+            text-transform: uppercase;
         }
 
         .app {
@@ -120,77 +92,182 @@
     <div class="container">
         <div class="intro-content">
             <h1>Teleop</h1>
-            <p>Teleop your robot arm with ease. No hardware. No firmware. Just your phone.</p>
+            <p>Teleop your robot arm with ease. No hardware. No firmware. Just your phone. Or VR headset.</p>
             <button class="button" id="start-button">Start</button>
             <div class="message" id="log"></div>
         </div>
     </div>
 
     <div class="app" id="app">
-        <div class="bottom-controls">
-            <div class="message" id="message"></div>
-            <button class="button" id="exit-button">X</button>
-            <button class="button" id="gripper-button">Gripper</button>
-            <button class="button" id="move-button">Move</button>
-        </div>
+        <teleop-ui id="teleop-ui"></teleop-ui>
     </div>
 
     <script>
-        var polyfill = new WebXRPolyfill();
+        class TeleopJoystick {
+            constructor() {
+                this.gripper = 'open';
+                this.moveButtonPressed = false;
+                this.reservedButtonA = false;
+                this.reservedButtonB = false;
+                this.scale = 1.0;
+            }
 
-        // Initialize Socket.IO connection
-        const socket = io({
-            transports: ['websocket', 'polling']
-        });
+            handleControllerInput(session, frame) {
+                const inputSources = session.inputSources;
+                for (let inputSource of inputSources) {
+                    if (inputSource.gamepad && inputSource.handedness === 'right') {
+                        const gamepad = inputSource.gamepad;
+                        if (gamepad.buttons[1] && gamepad.buttons[1].pressed) {
+                            this.moveButtonPressed = true;
+                        } else {
+                            this.moveButtonPressed = false;
+                        }
 
-        const connectionStatus = document.querySelector('#connection-status');
+                        if (gamepad.buttons[0] && gamepad.buttons[0].pressed && !gamepad.buttons[0].wasPressed) {
+                            this.gripper = (this.gripper === 'open') ? 'close' : 'open';
+                        }
+                        gamepad.buttons[0].wasPressed = gamepad.buttons[0].pressed;
+                    }
+                }
+            }
 
-        socket.on('connect', () => {
-            console.log('Connected to server');
-            connectionStatus.textContent = 'Connected';
-            connectionStatus.className = 'connection-status connected';
-        });
+            isMotionEnabled() {
+                return this.moveButtonPressed;
+            }
 
-        socket.on('disconnect', () => {
-            console.log('Disconnected from server');
-            connectionStatus.textContent = 'Disconnected';
-            connectionStatus.className = 'connection-status disconnected';
-        });
+            isGripperEngaged() {
+                return this.gripper === 'close';
+            }
 
-        const setMessage = (message) => {
-            console.log(message);
-            document.querySelector('#message').textContent = message;
-            document.querySelector('#log').textContent = message;
-        }
+            isReservedButtonAActive() {
+                return this.reservedButtonA;
+            }
 
-        const sendPose = (pose) => {
-            if (socket.connected) {
-                socket.emit('pose', pose);
-            } else {
-                console.error('Socket not connected, cannot send pose');
+            isReservedButtonBActive() {
+                return this.reservedButtonB;
+            }
+
+            getScale() {
+                return this.scale;
             }
         }
 
-        let moveButtonPressed = false;
-        let gripper = 'open';
-
-        const appDom = document.querySelector('#app');
-        const moveButtonDom = document.querySelector('#move-button');
-        const exitButtonDom = document.querySelector('#exit-button');
+        const teleopUI = document.querySelector('#teleop-ui');
+        const teleopJoystick = new TeleopJoystick();
         const startButtonDom = document.querySelector('#start-button');
-        const gripperButtonDOM = document.querySelector('#gripper-button');
+        const appDom = document.querySelector('#app');
 
-        moveButtonDom.addEventListener('touchstart', () => {
-            moveButtonPressed = true;
-        });
-        moveButtonDom.addEventListener('touchend', () => {
-            moveButtonPressed = false;
-        });
+        // FPS Counter
+        let fps = 0;
+        let frameCount = 0;
+        let lastFpsTime = performance.now();
 
-        gripperButtonDOM.addEventListener('click', () => {
-            gripper = (gripper === 'open') ? 'close' : 'open';
-            gripperButtonDOM.textContent = `Gripper: ${gripper}`;
-        });
+        function updateFPS() {
+            frameCount++;
+            const currentTime = performance.now();
+            if (currentTime - lastFpsTime >= 1000) { // Update every second
+                fps = Math.round((frameCount * 1000) / (currentTime - lastFpsTime));
+                frameCount = 0;
+                lastFpsTime = currentTime;
+            }
+        }
+
+        // WebSocket connection
+        const serverStats = {
+            connection: 'Not connected',
+        };
+        teleopUI.updateServerDiagnostics(serverStats);
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
+        let socket;
+        let isConnected = false;
+
+        const connectionStatus = document.querySelector('#connection-status');
+
+        function connectWebSocket() {
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                console.log('Connected to server');
+                isConnected = true;
+                connectionStatus.textContent = 'Connected';
+                connectionStatus.className = 'connection-status connected';
+                serverStats.connection = 'Connected';
+                teleopUI.updateServerDiagnostics(serverStats);
+            };
+
+            socket.onclose = () => {
+                console.log('Disconnected from server');
+                isConnected = false;
+                connectionStatus.textContent = 'Disconnected';
+                connectionStatus.className = 'connection-status disconnected';
+                serverStats.connection = 'Disconnected';
+                teleopUI.updateServerDiagnostics(serverStats);
+
+                // Attempt to reconnect after 3 seconds
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            socket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                serverStats.connection = 'Error: ' + error.message;
+                teleopUI.updateServerDiagnostics(serverStats);
+            };
+
+            socket.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                console.log('Received message:', message);
+            };
+        }
+
+        // Connect on page load
+        connectWebSocket();
+
+        // Message handling
+        let message = '';
+        const setMessage = (msg) => {
+            console.log(msg);
+            message = msg;
+        }
+
+        const sendPose = (pose) => {
+            if (isConnected && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'pose',
+                    data: pose
+                }));
+            } else {
+                console.error('WebSocket not connected, cannot send pose');
+            }
+        }
+
+        let isVRDevice = false;
+
+        function detectDeviceType(session) {
+            const inputSources = session.inputSources;
+            for (let inputSource of inputSources) {
+                if (inputSource.handedness === 'right' && inputSource.targetRayMode === 'tracked-pointer') {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function getPoseFromInputSource(session, frame, referenceSpace) {
+            const inputSources = session.inputSources;
+            for (let inputSource of inputSources) {
+                if (inputSource.handedness === 'right' && inputSource.targetRayMode === 'tracked-pointer') {
+                    const pose = frame.getPose(inputSource.targetRaySpace, referenceSpace);
+                    if (pose) {
+                        return {
+                            position: pose.transform.position,
+                            orientation: pose.transform.orientation
+                        };
+                    }
+                }
+            }
+            return null;
+        }
 
         setMessage('Click the button to start WebXR');
         let lastSendTime = performance.now();
@@ -198,10 +275,10 @@
             if (navigator.xr) {
                 navigator.xr.requestSession('immersive-ar', {
                     requiredFeatures: ['local-floor'],
-                    optionalFeatures: ['unbounded', 'dom-overlay', 'dom-overlay-for-handheld-ar', 'hit-test'],
+                    optionalFeatures: ['hand-tracking', 'unbounded', 'dom-overlay', 'dom-overlay-for-handheld-ar', 'hit-test', 'high-fixed-foveation-level'],
                     domOverlay: { root: document.querySelector('#app') }
                 }).then((session) => {
-                    exitButtonDom.addEventListener('click', () => {
+                    teleopUI.addEventListener('exit', () => {
                         session.end()
                     });
 
@@ -210,38 +287,68 @@
                         setMessage('Click the button to start WebXR');
                     });
 
+                    session.addEventListener('inputsourceschange', () => {
+                        isVRDevice = detectDeviceType(session);
+                        setMessage(isVRDevice ? 'VR controllers detected' : 'Using device pose');
+                    });
+
                     appDom.style.display = 'block';
-                    moveButtonPressed = false;
 
                     const glCanvas = document.createElement('canvas');
-                    const gl = glCanvas.getContext('webgl', { xrCompatible: true });
+                    const gl = glCanvas.getContext('webgl', {
+                        xrCompatible: true,
+                        antialias: false,
+                        alpha: false,
+                        depth: false,
+                        stencil: false,
+                        preserveDrawingBuffer: false,
+                        powerPreference: "high-performance"
+                    });
                     session.updateRenderState({
-                        baseLayer: new XRWebGLLayer(session, gl)
+                        baseLayer: new XRWebGLLayer(session, gl, {
+                            antialias: false,
+                            depth: false,
+                            stencil: false,
+                            alpha: false,
+                            multiview: false
+                        })
                     });
 
                     session.requestReferenceSpace('local-floor').then((referenceSpace) => {
                         let xrReferenceSpace = referenceSpace;
 
                         function onXRFrame(time, frame) {
-                            let pose = frame.getViewerPose(xrReferenceSpace);
-                            pose = pose ? pose.views[0] : null;
+                            // Update FPS counter
+                            updateFPS();
 
-                            if (pose) {
-                                let position = pose.transform.position;
-                                let orientation = pose.transform.orientation;
+                            let position, orientation;
 
-                                // Reduce update interval for WebSocket (can be more frequent than HTTP)
-                                if (time - lastSendTime > 50) { // 20Hz instead of 10Hz
-                                    lastSendTime = time;
-                                    if (pose.emulatedPosition) {
-                                        setMessage('Viewer pose is emulated');
+                            if (isVRDevice) {
+                                teleopJoystick.handleControllerInput(session, frame);
+                                const controllerPose = getPoseFromInputSource(session, frame, xrReferenceSpace);
+                                if (controllerPose) {
+                                    position = controllerPose.position;
+                                    orientation = controllerPose.orientation;
+                                } else {
+                                    const viewerPose = frame.getViewerPose(xrReferenceSpace);
+                                    if (viewerPose && viewerPose.views[0]) {
+                                        position = viewerPose.views[0].transform.position;
+                                        orientation = viewerPose.views[0].transform.orientation;
                                     }
-                                    setMessage(`
-                                        Position: x=${position.x.toFixed(3)}, y=${position.y.toFixed(3)}, z=${position.z.toFixed(3)}
-                                        Orientation: x=${orientation.x.toFixed(2)}, y=${orientation.y.toFixed(2)}, z=${orientation.z.toFixed(2)}, w=${orientation.w.toFixed(2)}
-                                        Move: ${moveButtonPressed}
-                                    `);
-                                    sendPose({
+                                }
+                            } else {
+                                const viewerPose = frame.getViewerPose(xrReferenceSpace);
+                                if (viewerPose && viewerPose.views[0]) {
+                                    position = viewerPose.views[0].transform.position;
+                                    orientation = viewerPose.views[0].transform.orientation;
+                                }
+                            }
+
+                            if (position && orientation) {
+                                if (time - lastSendTime > 10) {
+                                    const teleopFrontEnd = (isVRDevice) ? teleopJoystick : teleopUI;
+                                    lastSendTime = time;
+                                    const state = {
                                         position: {
                                             x: position.x,
                                             y: position.y,
@@ -253,12 +360,20 @@
                                             z: orientation.z,
                                             w: orientation.w
                                         },
-                                        move: moveButtonPressed,
-                                        gripper: gripper
-                                    });
+                                        move: teleopFrontEnd.isMotionEnabled(),
+                                        gripper: teleopFrontEnd.isGripperEngaged() ? 'close' : 'open',
+                                        fps: fps,
+                                        scale: teleopFrontEnd.getScale(),
+                                        reservedButtonA: teleopFrontEnd.isReservedButtonAActive(),
+                                        reservedButtonB: teleopFrontEnd.isReservedButtonBActive(),
+                                        device: isVRDevice ? 'VR' : 'Phone',
+                                        message: message
+                                    }
+                                    sendPose(state);
+                                    teleopUI.updateLocalStats(state);
                                 }
                             } else {
-                                setMessage('No viewer pose available');
+                                setMessage('No pose available');
                             }
                             session.requestAnimationFrame(onXRFrame);
                         }

@@ -1,8 +1,9 @@
 import unittest
 import threading
 import time
-import socketio
+import json
 import ssl
+import websocket
 from teleop import Teleop
 
 
@@ -15,7 +16,7 @@ def get_message():
     }
 
 
-BASE_URL = "https://localhost:4443"
+BASE_URL = "ws://localhost:4443/ws"
 
 
 class TestPoseCompounding(unittest.TestCase):
@@ -25,6 +26,9 @@ class TestPoseCompounding(unittest.TestCase):
         cls.__last_pose = None
         cls.__last_message = None
         cls.__callback_event = threading.Event()
+        cls.__ws = None
+        cls.__ws_connected = threading.Event()  # Use Event for connection tracking
+        cls.__ws_error = None
 
         def callback(pose, message):
             cls.__last_pose = pose
@@ -40,34 +44,64 @@ class TestPoseCompounding(unittest.TestCase):
 
         time.sleep(3)
 
-        cls.sio = socketio.Client(ssl_verify=False, logger=False, engineio_logger=False)
-
-        @cls.sio.event
-        def connect():
-            print("Connected to server")
-
-        @cls.sio.event
-        def disconnect():
-            print("Disconnected from server")
-
-        @cls.sio.event
-        def connect_error(data):
-            print(f"Connection error: {data}")
-
-        max_retries = 3
-        for attempt in range(max_retries):
+        # WebSocket event handlers
+        def on_message(ws, message):
             try:
-                cls.sio.connect(
-                    BASE_URL, transports=["polling"], wait_timeout=10, retry=True
-                )
-                break
-            except Exception as e:
-                print(f"Connection attempt {attempt + 1} failed: {e}")
-                if attempt == max_retries - 1:
-                    raise
-                time.sleep(2)
+                data = json.loads(message)
+                print(f"Received from server: {data}")
+            except json.JSONDecodeError:
+                print(f"Received non-JSON message: {message}")
 
-        time.sleep(2)
+        def on_error(ws, error):
+            print(f"WebSocket error: {error}")
+            cls.__ws_error = error
+            cls.__ws_connected.clear()
+
+        def on_close(ws, close_status_code, close_msg):
+            print(f"WebSocket connection closed: {close_status_code} - {close_msg}")
+            cls.__ws_connected.clear()
+
+        def on_open(ws):
+            print("WebSocket connection opened")
+            cls.__ws_connected.set()  # Signal that connection is established
+
+        # Create WebSocket connection
+        websocket.enableTrace(True)  # Enable for debugging
+        
+        # Use wss:// for HTTPS or ws:// for HTTP
+        url = BASE_URL.replace("ws://", "wss://") if "4443" in BASE_URL else BASE_URL
+        
+        cls.__ws = websocket.WebSocketApp(
+            url,
+            on_open=on_open,
+            on_message=on_message,
+            on_error=on_error,
+            on_close=on_close
+        )
+
+        # Start WebSocket in separate thread
+        cls.__ws_thread = threading.Thread(
+            target=cls.__ws.run_forever,
+            kwargs={
+                'sslopt': {
+                    "cert_reqs": ssl.CERT_NONE,
+                    "check_hostname": False
+                } if url.startswith("wss://") else None
+            }
+        )
+        cls.__ws_thread.daemon = True
+        cls.__ws_thread.start()
+
+        # Wait for connection to be established
+        connection_established = cls.__ws_connected.wait(timeout=10)
+        if not connection_established:
+            if cls.__ws_error:
+                raise Exception(f"WebSocket connection failed: {cls.__ws_error}")
+            else:
+                raise Exception("WebSocket connection timeout")
+        
+        # Give a small buffer after connection
+        time.sleep(0.5)
 
     def setUp(self):
         self.__class__.__last_pose = None
@@ -77,14 +111,35 @@ class TestPoseCompounding(unittest.TestCase):
     def _wait_for_callback(self, timeout=10.0):
         return self.__callback_event.wait(timeout=timeout)
 
+    def _send_message(self, payload):
+        """Send message to WebSocket server"""
+        # Check if connection is still active
+        if not self.__ws_connected.is_set():
+            raise Exception("WebSocket connection not active")
+            
+        if not hasattr(self.__ws, 'sock') or self.__ws.sock is None:
+            raise Exception("WebSocket socket is None")
+            
+        message = {
+            "type": "pose",
+            "data": payload
+        }
+        
+        try:
+            self.__ws.send(json.dumps(message))
+        except Exception as e:
+            # Connection might have been closed, try to reconnect
+            self.__ws_connected.clear()
+            raise Exception(f"Failed to send message: {e}")
+
     def test_response(self):
-        if not self.sio.connected:
-            self.skipTest("Socket.IO client not connected")
+        if not self.__ws_connected.is_set():
+            self.skipTest("WebSocket client not connected")
 
         payload = get_message()
         print(f"Sending payload: {payload}")
 
-        self.sio.emit("pose", payload)
+        self._send_message(payload)
 
         if not self._wait_for_callback(timeout=10.0):
             self.fail("Callback was not triggered within 10 seconds")
@@ -94,14 +149,14 @@ class TestPoseCompounding(unittest.TestCase):
         )
 
     def test_single_position_update(self):
-        if not self.sio.connected:
-            self.skipTest("Socket.IO client not connected")
+        if not self.__ws_connected.is_set():
+            self.skipTest("WebSocket client not connected")
 
         payload = get_message()
         print(f"Sending first payload: {payload}")
 
         payload["move"] = True
-        self.sio.emit("pose", payload)
+        self._send_message(payload)
 
         if not self._wait_for_callback(timeout=10.0):
             self.fail("First callback was not triggered within 10 seconds")
@@ -119,7 +174,7 @@ class TestPoseCompounding(unittest.TestCase):
         payload["move"] = True
         payload["position"]["y"] = 0.05
         print(f"Sending second payload: {payload}")
-        self.sio.emit("pose", payload)
+        self._send_message(payload)
 
         if not self._wait_for_callback(timeout=10.0):
             self.fail("Second callback was not triggered within 10 seconds")
@@ -131,7 +186,7 @@ class TestPoseCompounding(unittest.TestCase):
         payload["move"] = True
         payload["position"]["y"] = 0.1
         print(f"Sending third payload: {payload}")
-        self.sio.emit("pose", payload)
+        self._send_message(payload)
 
         if not self._wait_for_callback(timeout=10.0):
             self.fail("Third callback was not triggered within 10 seconds")
@@ -141,10 +196,10 @@ class TestPoseCompounding(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         try:
-            if hasattr(cls, "sio") and cls.sio.connected:
-                cls.sio.disconnect()
+            if hasattr(cls, '__ws') and cls.__ws:
+                cls.__ws.close()
         except Exception as e:
-            print(f"Error during disconnect: {e}")
+            print(f"Error during cleanup: {e}")
 
 
 if __name__ == "__main__":

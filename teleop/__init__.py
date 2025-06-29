@@ -1,15 +1,14 @@
-import ssl
 import os
 import math
 import socket
 import logging
-from werkzeug.serving import ThreadedWSGIServer
-from typing import Callable
-from flask import Flask, send_from_directory, request
-from flask_socketio import SocketIO, emit
+from typing import Callable, List
+import uvicorn
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 import transforms3d as t3d
 import numpy as np
-
+import json
 
 TF_RUB2FLU = np.array([[0, 0, -1, 0], [-1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1]])
 THIS_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -45,25 +44,114 @@ def are_close(a, b=None, lin_tol=1e-9, ang_tol=1e-9):
     d = np.linalg.inv(a) @ b
     if not np.allclose(d[:3, 3], np.zeros(3), atol=lin_tol):
         return False
-    rpy = t3d.euler.mat2euler(d[:3, :3])
+    yaw = math.atan2(d[1, 0], d[0, 0])
+    pitch = math.asin(-d[2, 0])
+    roll = math.atan2(d[2, 1], d[2, 2])
+    rpy = np.array([roll, pitch, yaw])
     return np.allclose(rpy, np.zeros(3), atol=ang_tol)
+
+
+def slerp(q1, q2, t):
+    """Spherical linear interpolation between two quaternions."""
+    q1 = q1 / np.linalg.norm(q1)
+    q2 = q2 / np.linalg.norm(q2)
+
+    dot = np.dot(q1, q2)
+
+    # If the dot product is negative, use the shortest path
+    if dot < 0.0:
+        q2 = -q2
+        dot = -dot
+
+    DOT_THRESHOLD = 0.9995
+    if dot > DOT_THRESHOLD:
+        # Linear interpolation fallback for nearly identical quaternions
+        result = q1 + t * (q2 - q1)
+        return result / np.linalg.norm(result)
+
+    theta_0 = np.arccos(dot)
+    theta = theta_0 * t
+
+    q3 = q2 - q1 * dot
+    q3 = q3 / np.linalg.norm(q3)
+
+    return q1 * np.cos(theta) + q3 * np.sin(theta)
+
+
+def interpolate_transforms(T1, T2, alpha):
+    """
+    Interpolate between two 4x4 transformation matrices using SLERP + linear translation.
+
+    Args:
+        T1 (np.ndarray): Start transform (4x4)
+        T2 (np.ndarray): End transform (4x4)
+        alpha (float): Interpolation factor [0, 1]
+
+    Returns:
+        np.ndarray: Interpolated transform (4x4)
+    """
+    assert T1.shape == (4, 4) and T2.shape == (4, 4)
+    assert 0.0 <= alpha <= 1.0
+
+    # Translation
+    t1 = T1[:3, 3]
+    t2 = T2[:3, 3]
+    t_interp = (1 - alpha) * t1 + alpha * t2
+
+    # Rotation
+    R1 = T1[:3, :3]
+    R2 = T2[:3, :3]
+    q1 = t3d.quaternions.mat2quat(R1)
+    q2 = t3d.quaternions.mat2quat(R2)
+
+    # SLERP
+    q_interp = slerp(q1, q2, alpha)
+    R_interp = t3d.quaternions.quat2mat(q_interp)
+
+    # Final transform
+    T_interp = np.eye(4)
+    T_interp[:3, :3] = R_interp
+    T_interp[:3, 3] = t_interp
+
+    return T_interp
+
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        await websocket.send_text(message)
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except:
+                # Remove broken connections
+                self.active_connections.remove(connection)
 
 
 class Teleop:
     """
-    Teleop class for controlling a robot remotely.
+    Teleop class for controlling a robot remotely using FastAPI and WebSockets.
 
     Args:
         host (str, optional): The host IP address. Defaults to "0.0.0.0".
         port (int, optional): The port number. Defaults to 4443.
-        ssl_context (ssl.SSLContext, optional): The SSL context for secure communication. Defaults to None.
     """
 
     def __init__(
         self,
         host="0.0.0.0",
         port=4443,
-        ssl_context=None,
         natural_phone_orientation_euler=None,
         natural_phone_position=None,
     ):
@@ -71,10 +159,8 @@ class Teleop:
         self.__logger.setLevel(logging.INFO)
         self.__logger.addHandler(logging.StreamHandler())
 
-        self.__server = None
         self.__host = host
         self.__port = port
-        self.__ssl_context = ssl_context
 
         self.__relative_pose_init = None
         self.__absolute_pose_init = None
@@ -92,21 +178,12 @@ class Teleop:
             [1, 1, 1],
         )
 
-        if self.__ssl_context is None:
-            self.__ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS)
-            self.__ssl_context.load_cert_chain(
-                certfile=os.path.join(THIS_DIR, "cert.pem"),
-                keyfile=os.path.join(THIS_DIR, "key.pem"),
-            )
+        self.__app = FastAPI()
+        self.__manager = ConnectionManager()
 
-        self.__app = Flask(__name__)
-        self.__app.config['SECRET_KEY'] = 'teleop_secret_key'
-        self.__socketio = SocketIO(self.__app, cors_allowed_origins="*")
-        
-        log = logging.getLogger("werkzeug")
-        log.setLevel(logging.ERROR)
-        self.__register_routes()
-        self.__register_socketio_events()
+        # Configure logging
+        logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+        self.__setup_routes()
 
     def set_pose(self, pose: np.ndarray) -> None:
         """
@@ -137,6 +214,7 @@ class Teleop:
         move = message["move"]
         position = message["position"]
         orientation = message["orientation"]
+        scale = message.get("scale", 1.0)
 
         position = np.array([position["x"], position["y"], position["z"]])
         quat = np.array(
@@ -163,7 +241,7 @@ class Teleop:
             if not are_close(
                 received_pose,
                 self.__previous_received_pose,
-                lin_tol=10e-2,
+                lin_tol=0.05,
                 ang_tol=math.radians(35),
             ):
                 self.__logger.warning("Pose jump detected, resetting the pose")
@@ -178,44 +256,56 @@ class Teleop:
             self.__absolute_pose_init = self.__pose
             self.__previous_received_pose = None
 
-        relative_pose = np.linalg.inv(self.__relative_pose_init) @ received_pose
-        self.__pose = np.eye(4)
-        self.__pose[:3, 3] = self.__absolute_pose_init[:3, 3] + relative_pose[:3, 3]
-        self.__pose[:3, :3] = (
-            relative_pose[:3, :3] @ self.__absolute_pose_init[:3, :3]
+        relative_position = received_pose[:3, 3] - self.__relative_pose_init[:3, 3]
+        relative_orientation = received_pose[:3, :3] @ np.linalg.inv(
+            self.__relative_pose_init[:3, :3]
         )
+        self.__pose = np.eye(4)
+        self.__pose[:3, 3] = self.__absolute_pose_init[:3, 3] + relative_position
+        self.__pose[:3, :3] = relative_orientation @ self.__absolute_pose_init[:3, :3]
+
+        # Apply scale
+        if scale != 1.0:
+            self.__pose = interpolate_transforms(
+                self.__absolute_pose_init, self.__pose, scale
+            )
 
         # Notify the subscribers
         self.__notify_subscribers(self.__pose, message)
 
-    def __register_routes(self):
-        @self.__app.route("/<path:filename>")
-        def serve_file(filename):
-            self.__logger.debug(f"Serving the {filename} file")
-            return send_from_directory(THIS_DIR, filename)
-
-        @self.__app.route("/")
-        def index():
+    def __setup_routes(self):
+        @self.__app.get("/")
+        async def index():
             self.__logger.debug("Serving the index.html file")
-            return send_from_directory(THIS_DIR, "index.html")
+            return FileResponse(os.path.join(THIS_DIR, "index.html"))
 
-    def __register_socketio_events(self):
-        @self.__socketio.on('connect')
-        def handle_connect():
-            self.__logger.info('Client connected')
+        @self.__app.get("/{filename:path}")
+        async def serve_file(filename: str):
+            self.__logger.debug(f"Serving the {filename} file")
+            file_path = os.path.join(THIS_DIR, filename)
+            if os.path.exists(file_path):
+                return FileResponse(file_path)
+            return {"error": "File not found"}
 
-        @self.__socketio.on('disconnect')
-        def handle_disconnect():
-            self.__logger.info('Client disconnected')
+        @self.__app.websocket("/ws")
+        async def websocket_endpoint(websocket: WebSocket):
+            await self.__manager.connect(websocket)
+            self.__logger.info("Client connected")
 
-        @self.__socketio.on('pose')
-        def handle_pose(data):
-            self.__logger.debug(f"Received pose data: {data}")
-            self.__update(data)
+            try:
+                while True:
+                    data = await websocket.receive_text()
+                    message = json.loads(data)
 
-        @self.__socketio.on('log')
-        def handle_log(data):
-            self.__logger.info(f"Received log message: {data}")
+                    if message.get("type") == "pose":
+                        self.__logger.debug(f"Received pose data: {message['data']}")
+                        self.__update(message["data"])
+                    elif message.get("type") == "log":
+                        self.__logger.info(f"Received log message: {message['data']}")
+
+            except WebSocketDisconnect:
+                self.__manager.disconnect(websocket)
+                self.__logger.info("Client disconnected")
 
     def run(self) -> None:
         """
@@ -226,17 +316,21 @@ class Teleop:
             f"The phone web app should be available at https://{get_local_ip()}:{self.__port}"
         )
 
-        self.__server = ThreadedWSGIServer(
-            app=self.__app,
+        ssl_keyfile = os.path.join(THIS_DIR, "key.pem")
+        ssl_certfile = os.path.join(THIS_DIR, "cert.pem")
+
+        uvicorn.run(
+            self.__app,
             host=self.__host,
             port=self.__port,
-            ssl_context=self.__ssl_context,
+            ssl_keyfile=ssl_keyfile,
+            ssl_certfile=ssl_certfile,
+            log_level="warning",
         )
-        self.__server.serve_forever()
 
     def stop(self) -> None:
         """
         Stops the teleop server.
         """
-        if self.__server:
-            self.__server.shutdown()
+        # FastAPI/uvicorn handles shutdown automatically
+        pass

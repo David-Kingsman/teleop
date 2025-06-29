@@ -35,6 +35,19 @@ A simple interface that prints the teleop responses. You can use it as a referen
 python3 -m teleop.basic
 ```
 
+### xArm
+
+Interface to teleoperate the [uFactory Lite 6](https://www.ufactory.cc/lite-6-collaborative-robot/) robot.
+Minor changes are probably necessary to support other xArm robots.
+
+```bash
+python3 -m teleop.xarm
+```
+
+Note that the interface is very simple, it doesn't implement any kind of filtering.
+Therefore, you probably want to teleoperate it with a device with high frequency.
+Smart phones are typically 30fps while VR joysticks 90fps which is much more preferable for teleoperation without filtering.
+
 ### ROS 2 Interface
 
 The ROS 2 interface is designed primarily for use with the [cartesian_controllers](https://github.com/fzi-forschungszentrum-informatik/cartesian_controllers) package, but it can also be adapted for [MoveIt Servo](https://moveit.picknik.ai/main/doc/examples/realtime_servo/realtime_servo_tutorial.html) or other packages.

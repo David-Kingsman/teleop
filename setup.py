@@ -16,25 +16,25 @@ for match in re.findall(r"\]\((?!http)([^)]+)\)", long_description):
 
 setup(
     name="teleop",
-    version="0.0.9",
-    packages=["teleop", "teleop.basic", "teleop.ros2", "teleop.utils", "teleop.ros2_ik"],
+    version="0.1.0",
+    packages=["teleop", "teleop.basic", "teleop.ros2", "teleop.utils", "teleop.ros2_ik", "teleop.xarm"],
     long_description=long_description,
     long_description_content_type="text/markdown",
     description="Turns your phone into a robot arm teleoperation device by leveraging the WebXR API",
     install_requires=[
-        "Flask",
-        "Flask-SocketIO",
+        "fastapi",
+        "uvicorn[standard]",
         "numpy",
         "transforms3d",
-        "werkzeug",
         "pytest",
         "requests",
+        "websocket-client",
     ],
     extras_require={
         "utils": ["pin"],
     },
     package_data={
-        "teleop": ["cert.pem", "key.pem", "index.html"],
+        "teleop": ["cert.pem", "key.pem", "index.html", "teleop-ui.js"],
     },
     license="Apache 2.0",
     author="Spes Robotics",
