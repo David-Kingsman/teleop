@@ -127,6 +127,14 @@
                             this.gripper = (this.gripper === 'open') ? 'close' : 'open';
                         }
                         gamepad.buttons[0].wasPressed = gamepad.buttons[0].pressed;
+
+                        this.reservedButtonA = gamepad.buttons[4] && gamepad.buttons[4].pressed;
+                        this.reservedButtonB = gamepad.buttons[5] && gamepad.buttons[5].pressed;
+
+                        const gamepadAxis = gamepad.axes[0];
+                        if (gamepadAxis !== undefined && Math.abs(gamepadAxis) > 0.1) {
+                            this.scale = Math.max(0.2, Math.min(1.0, this.scale + gamepadAxis * 0.1));
+                        }
                     }
                 }
             }
