@@ -39,15 +39,15 @@ class JacobiRobot:
         self,
         urdf_path: str,
         ee_link: str = "end_effector",
-        max_linear_vel: float = 0.4,
-        max_angular_vel: float = 1.8,
-        max_linear_acc: float = 3.0,
-        max_angular_acc: float = 6.0,
+        max_linear_vel: float = 0.8,
+        max_angular_vel: float = 3.0,
+        max_linear_acc: float = 6.0,
+        max_angular_acc: float = 8.0,
         max_joint_vel: float = 5.0,
         min_linear_vel: float = 0.03,
         min_angular_vel: float = 0.1,
         linear_gain: float = 20.0,
-        angular_gain: float = 8.0,
+        angular_gain: float = 12.0,
     ):
         """
         Initialize the Pinocchio robot with servo control capabilities.
@@ -92,6 +92,16 @@ class JacobiRobot:
         self.eps = 1e-4
         self.max_iter = 100
         self.damping = 1e-4  # Increased damping for stability
+
+        # IK regularization parameters
+        self.joint_regularization = 0.01  # Joint position regularization weight
+        self.velocity_regularization = 0.001  # Joint velocity regularization weight
+        self.manipulability_threshold = (
+            0.01  # Threshold for manipulability-based regularization
+        )
+        self.desired_joint_config = pin.neutral(
+            self.model
+        ).copy()  # Target joint configuration for regularization
 
         # Previous velocities for acceleration limiting
         self.prev_linear_vel = np.zeros(3)
@@ -139,11 +149,11 @@ class JacobiRobot:
         J = self.__compute_jacobian()
         # Create desired spatial velocity vector
         desired_spatial_vel = np.concatenate([linear_velocity, angular_velocity_rpy])
-        # Use SVD for more stable pseudo-inverse
-        U, s, Vt = np.linalg.svd(J, full_matrices=False)
-        s_inv = np.where(s > 1e-6, 1.0 / s, 0.0)  # Threshold small singular values
-        J_pinv = Vt.T @ np.diag(s_inv) @ U.T
-        joint_velocities = J_pinv @ desired_spatial_vel
+
+        # Use regularized pseudo-inverse
+        J_pinv, joint_bias = self.__compute_regularized_jacobian_pinv(J)
+        joint_velocities = J_pinv @ desired_spatial_vel + joint_bias
+
         # Apply joint velocity limits
         for i in range(len(joint_velocities)):
             if i < len(self.dq_max) and self.dq_max[i] > 0:
@@ -268,15 +278,12 @@ class JacobiRobot:
         current_spatial_vel = self.__get_ee_velocity()
         desired_spatial_vel -= damping_factor * current_spatial_vel
 
-        # Compute joint velocities using damped pseudo-inverse
+        # Compute joint velocities using regularized pseudo-inverse
         J = self.__compute_jacobian()
 
-        # Use SVD for more stable pseudo-inverse
-        U, s, Vt = np.linalg.svd(J, full_matrices=False)
-        s_inv = np.where(s > 1e-6, 1.0 / s, 0.0)  # Threshold small singular values
-        J_pinv = Vt.T @ np.diag(s_inv) @ U.T
-
-        joint_velocities = J_pinv @ desired_spatial_vel
+        # Use regularized pseudo-inverse with multiple regularization terms
+        J_pinv, joint_bias = self.__compute_regularized_jacobian_pinv(J)
+        joint_velocities = J_pinv @ desired_spatial_vel + joint_bias
 
         # Apply joint velocity limits
         for i in range(len(joint_velocities)):
@@ -418,7 +425,7 @@ class JacobiRobot:
             plt.close(self.fig)
 
     def print_status(self):
-        """Print current robot status."""
+        """Print current robot status including IK diagnostics."""
         ee_pose = self.get_ee_pose()
 
         print(f"\n--- Robot Status ---")
@@ -462,6 +469,97 @@ class JacobiRobot:
         if joint_index < 0 or joint_index >= self.model.njoints:
             raise ValueError(f"Joint '{joint_name}' not found in model.")
         return self.dq[joint_index]
+
+    def __compute_regularized_jacobian_pinv(self, J: np.ndarray) -> np.ndarray:
+        """
+        Compute regularized pseudo-inverse of Jacobian with multiple regularization terms.
+
+        Args:
+            J: Jacobian matrix
+
+        Returns:
+            Regularized pseudo-inverse of Jacobian
+        """
+        n_joints = J.shape[1]
+
+        # Compute manipulability measure
+        manipulability = np.sqrt(np.linalg.det(J @ J.T))
+
+        # Adaptive damping based on manipulability
+        adaptive_damping = self.damping
+        if manipulability < self.manipulability_threshold:
+            # Increase damping near singularities
+            damping_factor = self.manipulability_threshold / (manipulability + 1e-8)
+            adaptive_damping = self.damping * min(damping_factor, 10.0)
+
+        # Joint position regularization (bias towards desired joint configuration)
+        joint_position_error = self.q - self.desired_joint_config
+        W_joint = np.eye(n_joints) * self.joint_regularization
+
+        # Joint velocity regularization (bias towards zero velocity)
+        W_velocity = np.eye(n_joints) * self.velocity_regularization
+
+        # Combined regularization matrix
+        W_reg = W_joint + W_velocity
+
+        # Damped least squares with regularization
+        # J_pinv = (J^T J + λI + W_reg)^(-1) J^T
+        JTJ = J.T @ J
+        regularization_matrix = adaptive_damping * np.eye(n_joints) + W_reg
+
+        try:
+            # Primary method: Regularized normal equation
+            J_pinv = np.linalg.solve(JTJ + regularization_matrix, J.T)
+        except np.linalg.LinAlgError:
+            # Fallback: SVD-based regularized pseudo-inverse
+            U, s, Vt = np.linalg.svd(J, full_matrices=False)
+            s_reg = s / (s**2 + adaptive_damping)  # Regularized singular values
+            J_pinv = Vt.T @ np.diag(s_reg) @ U.T
+
+        # Add joint position bias term
+        joint_bias = -self.joint_regularization * joint_position_error
+
+        return J_pinv, joint_bias
+
+    def set_regularization_params(
+        self,
+        joint_regularization: float = None,
+        velocity_regularization: float = None,
+        manipulability_threshold: float = None,
+        damping: float = None,
+        desired_joint_config: np.ndarray = None,
+    ):
+        """
+        Set IK regularization parameters.
+
+        Args:
+            joint_regularization: Weight for joint position regularization (bias towards desired config)
+            velocity_regularization: Weight for joint velocity regularization (bias towards zero)
+            manipulability_threshold: Threshold for manipulability-based adaptive damping
+            damping: Base damping factor for singularity avoidance
+            desired_joint_config: Target joint configuration for regularization (bias towards these angles)
+        """
+        if joint_regularization is not None:
+            self.joint_regularization = joint_regularization
+        if velocity_regularization is not None:
+            self.velocity_regularization = velocity_regularization
+        if manipulability_threshold is not None:
+            self.manipulability_threshold = manipulability_threshold
+        if damping is not None:
+            self.damping = damping
+        if desired_joint_config is not None:
+            if len(desired_joint_config) != self.model.nq:
+                raise ValueError(
+                    f"desired_joint_config must have {self.model.nq} elements, got {len(desired_joint_config)}"
+                )
+            self.desired_joint_config = np.array(desired_joint_config)
+
+        print(f"Regularization parameters updated:")
+        print(f"  Joint regularization: {self.joint_regularization}")
+        print(f"  Velocity regularization: {self.velocity_regularization}")
+        print(f"  Manipulability threshold: {self.manipulability_threshold}")
+        print(f"  Damping: {self.damping}")
+        print(f"  Desired joint config: {np.round(self.desired_joint_config, 3)}")
 
 
 if __name__ == "__main__":
