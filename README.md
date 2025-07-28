@@ -20,7 +20,7 @@ The web application leverages the WebXR API, which combines your phone’s senso
 The package is available on [PyPI](https://pypi.org/project/teleop/). You can install it using pip:
 
 ```bash
-pip3 install teleop
+pip install teleop
 ```
 
 ## Usage
@@ -32,7 +32,7 @@ We provide some ready-to-use robot arm interfaces, but you can also create your 
 A simple interface that prints the teleop responses. You can use it as a reference to build your own interface.
 
 ```bash
-python3 -m teleop.basic
+python -m teleop.basic
 ```
 
 ### xArm
@@ -41,7 +41,7 @@ Interface to teleoperate the [uFactory Lite 6](https://www.ufactory.cc/lite-6-co
 Minor changes are probably necessary to support other xArm robots.
 
 ```bash
-python3 -m teleop.xarm
+python -m teleop.xarm
 ```
 
 Note that the interface is very simple, it doesn't implement any kind of filtering.
@@ -53,7 +53,7 @@ Smart phones are typically 30fps while VR joysticks 90fps which is much more pre
 The ROS 2 interface is designed primarily for use with the [cartesian_controllers](https://github.com/fzi-forschungszentrum-informatik/cartesian_controllers) package, but it can also be adapted for [MoveIt Servo](https://moveit.picknik.ai/main/doc/examples/realtime_servo/realtime_servo_tutorial.html) or other packages.
 
 ```bash
-python3 -m teleop.ros2
+python -m teleop.ros2
 ```
 
 **Published topics:**
@@ -66,7 +66,7 @@ python3 -m teleop.ros2
 You can override the default topic names using standard ROS 2 arguments:
 
 ```bash
-python3 -m teleop.ros2 --ros-args -r target_frame:=/some_other_topic_name
+python -m teleop.ros2 --ros-args -r target_frame:=/some_other_topic_name
 ```
 
 ### ROS 2 Interface with IK
@@ -76,7 +76,7 @@ No servoing support, no problem.
 
 Panda arm usage example:
 ```bash
-python3 -m teleop.ros2_ik \
+python -m teleop.ros2_ik \
   --joint-names panda_joint1 panda_joint2 panda_joint3 panda_joint4 panda_joint5 panda_joint6 panda_joint7 \
   --ee-link panda_hand \
   --ros-args -r /joint_trajectory:=/panda_arm_controller/joint_trajectory
@@ -84,7 +84,7 @@ python3 -m teleop.ros2_ik \
 
 xArm usage example:
 ```bash
-python3 -m teleop.ros2_ik \
+python -m teleop.ros2_ik \
   --joint-names joint1 joint2 joint3 joint4 joint5 joint6 \
   --ee-link link6 \
   --ros-args -r /joint_trajectory:=/joint_trajectory_controller/joint_trajectory
@@ -191,8 +191,8 @@ If you’d like to contribute, install the package in editable mode:
 # Install the package in editable mode
 git clone https://github.com/SpesRobotics/teleop.git
 cd teleop
-pip3 install -e .
+pip install -e .
 
 # Run the tests
-python3 -m pytest
+python -m pytest
 ```

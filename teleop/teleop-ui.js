@@ -186,6 +186,21 @@ class TeleopUI extends HTMLElement {
                     .info-box {
                         flex: 1;
                     }
+
+                    .auxilary-section {
+                        display: flex;
+                        flex-direction: row;
+                        justify-content: center;
+                        gap: 20px;
+                    }
+
+                    .scale-section {
+                        width: 300px;
+                    }
+
+                    .reserved-section {
+                        width: 200px;
+                    }
                 }
             </style>
             
@@ -207,15 +222,17 @@ class TeleopUI extends HTMLElement {
                     </div>
                 </div>
                 
+                <div class="auxilary-section">
                 <div class="scale-section">
                     <input type="range" class="scale-slider" id="scaleSlider" 
-                        min="0" max="3" step="1" value="3">
+                        min="0" max="5" step="1" value="3">
                     <div class="scale-value" id="scaleValue">scale 1.0</div>
                 </div>
 
                 <div class="reserved-section">
                     <div class="reserved-button" id="reservedButtonA">A</div>
                     <div class="reserved-button" id="reservedButtonB">B</div>
+                </div>
                 </div>
 
                 <div class="controls">
@@ -246,7 +263,7 @@ class TeleopUI extends HTMLElement {
 
         // Scale slider
         scaleSlider.addEventListener('input', (event) => {
-            const sliderValues = [0.1, 0.25, 0.5, 1.0];
+            const sliderValues = [0.1, 0.25, 0.5, 1.0, 2.0, 4.0];
             this.sliderValue = sliderValues[event.target.value];
             this.shadowRoot.getElementById('scaleValue').textContent = `scale scale ${this.sliderValue.toFixed(2)}`;
 

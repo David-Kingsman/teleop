@@ -260,12 +260,16 @@ class Teleop:
         relative_orientation = received_pose[:3, :3] @ np.linalg.inv(
             self.__relative_pose_init[:3, :3]
         )
+
+        if scale > 1.0:
+            relative_position *= scale
+
         self.__pose = np.eye(4)
         self.__pose[:3, 3] = self.__absolute_pose_init[:3, 3] + relative_position
         self.__pose[:3, :3] = relative_orientation @ self.__absolute_pose_init[:3, :3]
 
         # Apply scale
-        if scale != 1.0:
+        if scale < 1.0:
             self.__pose = interpolate_transforms(
                 self.__absolute_pose_init, self.__pose, scale
             )
