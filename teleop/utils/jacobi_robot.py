@@ -210,7 +210,7 @@ class JacobiRobot:
             linear_vel_norm = np.linalg.norm(desired_linear_vel)
             if linear_vel_norm > 0 and linear_vel_norm < self.min_linear_vel:
                 desired_linear_vel = desired_linear_vel * (
-                    self.min_angular_vel / linear_vel_norm
+                    self.min_linear_vel / linear_vel_norm
                 )
 
         if angular_error_norm > angular_tol:
