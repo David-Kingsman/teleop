@@ -87,10 +87,6 @@ class JacobiRobot:
         self.kp_pos = 1.0  # Position gain (reduced from 5.0)
         self.kp_ori = 0.5  # Orientation gain (reduced from 3.0)
         self.kd = 0.05  # Damping gain
-
-        # IK solver parameters
-        self.eps = 1e-4
-        self.max_iter = 100
         self.damping = 1e-4  # Increased damping for stability
 
         # IK regularization parameters
@@ -175,8 +171,8 @@ class JacobiRobot:
         self,
         target_pose: np.ndarray,
         dt: float = 0.01,
-        linear_tol: float = 0.005,
-        angular_tol: float = 0.01,
+        linear_tol: float = 0.0005,
+        angular_tol: float = 0.005,
     ) -> bool:
         """
         Compute joint velocities for servoing to target pose with velocity/acceleration limits.
