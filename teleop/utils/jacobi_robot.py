@@ -55,6 +55,7 @@ class JacobiRobot:
         # Load robot model
         self.model = pin.buildModelFromUrdf(urdf_path)
         self.data = self.model.createData()
+        self.data_tmp = self.model.createData()
 
         # Get end-effector frame ID
         try:
@@ -114,10 +115,25 @@ class JacobiRobot:
         pin.framesForwardKinematics(self.model, self.data, self.q)
         pin.computeJointJacobians(self.model, self.data, self.q)
 
-    def get_ee_pose(self) -> np.ndarray:
+    def get_ee_pose(self, joint_positions_dict: dict = None) -> np.ndarray:
         """Get current end-effector pose as 4x4 transformation matrix."""
+        if joint_positions_dict is not None:
+            return self._get_ee_pose_given_positions(joint_positions_dict)
         self.__update_kinematics()
         se3_pose = self.data.oMf[self.ee_frame_id]
+        return se3_to_matrix(se3_pose)
+
+    def _get_ee_pose_given_positions(self, joint_positions_dict: dict) -> np.ndarray:
+        joint_positions = np.zeros(self.model.nq)
+        for joint_name, position in joint_positions_dict.items():
+            joint_index = self.__get_joint_index(joint_name)
+            if joint_index < 0 or joint_index >= self.model.nq:
+                raise ValueError(f"Joint '{joint_name}' not found in model.")
+            joint_positions[joint_index] = position
+
+        pin.forwardKinematics(self.model, self.data_tmp, joint_positions)
+        pin.framesForwardKinematics(self.model, self.data_tmp, joint_positions)
+        se3_pose = self.data_tmp.oMf[self.ee_frame_id]
         return se3_to_matrix(se3_pose)
 
     def __get_ee_velocity(self) -> np.ndarray:
@@ -567,6 +583,20 @@ if __name__ == "__main__":
         robot = JacobiRobot(
             urdf_path, ee_link="link6", max_linear_vel=0.05, max_angular_vel=0.2
         )  # Reduced limits
+
+        print(
+            "EEF pose",
+            robot.get_ee_pose(
+                {
+                    "joint1": 0.0,
+                    "joint2": 0.0,
+                    "joint3": 0.0,
+                    "joint4": 0.0,
+                    "joint5": 0.0,
+                    "joint6": 0.0,
+                }
+            ),
+        )
 
         # Start visualization
         robot.start_visualization()
