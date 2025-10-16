@@ -88,9 +88,11 @@ def servo(arm, pose):
     error = arm.set_servo_cartesian([x, y, z, roll, pitch, yaw], speed=100, mvacc=100)
     return error
 
+ip = "192.168.1.193" # lite6 ip
+# ip = "192.168.1.235" # xarm6 ip
 
 def main():
-    arm = XArmAPI("192.168.1.184", is_radian=True)
+    arm = XArmAPI(ip, is_radian=True)
     arm.connect()
     arm.motion_enable(enable=True)
     arm.set_mode(1)
